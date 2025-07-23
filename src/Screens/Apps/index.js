@@ -1,0 +1,13 @@
+export {default as Home} from './Home';
+export {default as Salon} from './Salon';
+export {default as Service} from './Service';
+export {default as DateBook} from './DateBook';
+export {default as Notifications} from './Notifications';
+export {default as Favorites} from './Favorites';
+export {default as Profile} from './Profile';
+export {default as Booking} from './Booking';
+export {default as BookingDetails} from './BookingDetails';
+export {default as Cart} from './Cart';
+export {default as View_all} from './View_all';
+export {default as View_all2} from './View_all2';
+export {default as ChangeAppointment} from './ChangeAppointment';

@@ -1,0 +1,17 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "src/assets/fonts/Allura-Regular.ttf",
+      "sha1": "c3a0d84fb39494ca3df33471cda36984f60f1b05"
+    },
+    {
+      "path": "src/assets/fonts/StyleScript-Regular.ttf",
+      "sha1": "ff7e6779c0c210c8d00083bce96c94e6cb0c3944"
+    },
+    {
+      "path": "src/assets/fonts/VLADIMIR.TTF",
+      "sha1": "b5a87230b5753f93397532c56ed3b071fa6e3cc5"
+    }
+  ]
+}

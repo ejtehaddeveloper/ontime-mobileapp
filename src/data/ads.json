@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1,
+    "title": "Ad 1",
+    "image": "https://cdn.livingitup.co.uk/pub/media/amasty/blog/cache/s/a/744/416/salon_reception_desk.png"
+  },
+  {
+    "id": 2,
+    "title": "Ad 2",
+    "image": "https://cdn.shopify.com/s/files/1/0270/8409/5576/files/4_b671776c-a52a-4028-8731-c2ab1cfdac99_480x480.jpg?v=1680164383"
+  },
+  {
+    "id": 3,
+    "title": "Ad 3",
+    "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQnbSfV-8gY-fuxFvA-Phsm6VUHk-izkWXRYeEUVM30ueayETLwkBGS5KOQZEkrRmCdoqw&usqp=CAU"
+  }
+]

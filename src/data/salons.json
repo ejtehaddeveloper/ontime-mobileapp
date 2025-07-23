@@ -1,0 +1,133 @@
+[
+  {
+    "id": 1,
+    "name": "Salon Name",
+    "image": "https://cdn-fckbe.nitrocdn.com/ugxlklWgxpgACxBGPkStdPlbcIigaGbj/assets/images/optimized/rev-6e87790/warrentricomi.com/wp-content/uploads/2022/05/signs-time-for-quality-haircut-at-best-high-end-hair-salon-nyc-1200x480.jpg",
+    "services": [
+      "Hair Color",
+      "Makeup",
+      "Nails",
+      "Spa",
+      "Hairstyle",
+      "Facial Makeup",
+      "Short Haircut"
+    ],
+    "address": "Doha",
+    "dscription": "Hair Salon and more"
+  },
+  {
+    "id": 2,
+    "name": "Salon Name",
+    "image": "https://polishedtallow.ie/wp-content/uploads/2019/06/IMG_20190515_084650_308.jpg",
+    "services": [
+      "Hair Color",
+      "Makeup",
+      "Nails",
+      "Spa",
+      "Hairstyle",
+      "Facial Makeup",
+      "Short Haircut"
+    ],
+    "address": "Lusail",
+    "dscription": "Hair Salon and more"
+  },
+  {
+    "id": 3,
+    "name": "Salon Name",
+    "image": "https://img.freepik.com/premium-photo/beautiful-young-woman-receiving-white-facial-mask-beauty-salon-spa-skin-body-care-facial-beauty-treatment_231834-1201.jpg",
+    "services": [
+      "Hair Color",
+      "Makeup",
+      "Nails",
+      "Spa",
+      "Hairstyle",
+      "Facial Makeup",
+      "Short Haircut"
+    ],
+    "address": "Dukhan",
+    "dscription": "Hair Salon and more"
+  },
+  {
+    "id": 4,
+    "name": "Salon Name",
+    "image": "https://cdn-fckbe.nitrocdn.com/ugxlklWgxpgACxBGPkStdPlbcIigaGbj/assets/images/optimized/rev-6e87790/warrentricomi.com/wp-content/uploads/2022/05/signs-time-for-quality-haircut-at-best-high-end-hair-salon-nyc-1200x480.jpg",
+    "services": [
+      "Hair Color",
+      "Makeup",
+      "Spa",
+      "Hairstyle",
+      "Facial Makeup",
+      "Short Haircut"
+    ],
+    "address": "Umm Salal",
+    "dscription": "Hair Salon and more"
+  },
+  {
+    "id": 5,
+    "name": "Salon Name",
+    "image": "https://polishedtallow.ie/wp-content/uploads/2019/06/IMG_20190515_084650_308.jpg",
+    "services": [
+      "Hair Color",
+      "Makeup",
+      "Spa",
+      "Hairstyle",
+      "Facial Makeup",
+      "Short Haircut"
+    ],
+    "address": "Alkor",
+    "dscription": "Hair Salon and more"
+  },
+  {
+    "id": 6,
+    "name": "Salon Name",
+    "image": "https://img.freepik.com/premium-photo/beautiful-young-woman-receiving-white-facial-mask-beauty-salon-spa-skin-body-care-facial-beauty-treatment_231834-1201.jpg",
+    "services": [
+      "Hair Color",
+      "Makeup",
+      "Nails",
+      "Hairstyle",
+      "Facial Makeup",
+      "Short Haircut"
+    ],
+    "address": "Alkor",
+    "dscription": "Hair Salon and more"
+  },
+  {
+    "id": 7,
+    "name": "Salon Name",
+    "image": "https://cdn-fckbe.nitrocdn.com/ugxlklWgxpgACxBGPkStdPlbcIigaGbj/assets/images/optimized/rev-6e87790/warrentricomi.com/wp-content/uploads/2022/05/signs-time-for-quality-haircut-at-best-high-end-hair-salon-nyc-1200x480.jpg",
+    "services": [
+      "Hair Color",
+      "Makeup",
+      "Nails",
+      "Hairstyle",
+      "Facial Makeup",
+      "Short Haircut"
+    ],
+    "address": "Dukhan",
+    "dscription": "Hair Salon and more"
+  },
+  {
+    "id": 8,
+    "name": "Salon Name",
+    "image": "https://polishedtallow.ie/wp-content/uploads/2019/06/IMG_20190515_084650_308.jpg",
+    "services": [
+      "Makeup",
+      "Nails",
+      "Spa",
+      "Hairstyle",
+      "Facial Makeup",
+      "Short Haircut"
+    ],
+    "address": "Lusail",
+    "dscription": "Hair Salon and more"
+  },
+  {
+    "id": 9,
+    "name": "Salon Name",
+    "image": "https://img.freepik.com/premium-photo/beautiful-young-woman-receiving-white-facial-mask-beauty-salon-spa-skin-body-care-facial-beauty-treatment_231834-1201.jpg",
+    "services": ["Nails", "Spa", "Hairstyle", "Facial Makeup", "Short Haircut"],
+    "address": "Doha",
+    "dscription": "Hair Salon and more"
+  }
+]

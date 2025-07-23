@@ -1,0 +1,13 @@
+[
+    {
+        "id": 1,
+        "type": "parmetion",
+        "status": true
+    },
+    {
+        "id": 2,
+        "type": "language",
+        "status": true,
+        "lang": "en"
+    }
+]
