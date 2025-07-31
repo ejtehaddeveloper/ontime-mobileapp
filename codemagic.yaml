@@ -1,0 +1,50 @@
+workflows:
+  ios-testflight:
+    name: Build iOS → TestFlight
+    instance_type: mac_m1
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - main
+
+    environment:
+      flutter: false
+      vars:
+        APPCONNECT_JSON: $APPCONNECT_JSON
+
+    scripts:
+      - name: Install JS dependencies
+        script: |
+          npm ci
+
+      - name: CocoaPods install
+        script: |
+          cd ios
+          pod install --repo-update
+          cd ..
+
+      - name: Build & archive
+        script: |
+          xcodebuild \
+            -workspace ios/MyApp.xcworkspace \
+            -scheme MyApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -allowProvisioningUpdates \
+            -archivePath $CM_BUILD_DIR/ios_build/MyApp.xcarchive \
+            archive
+
+      - name: Export .ipa
+        script: |
+          xcodebuild -exportArchive \
+            -archivePath $CM_BUILD_DIR/ios_build/MyApp.xcarchive \
+            -exportOptionsPlist ios/ExportOptions.plist \
+            -exportPath $CM_BUILD_DIR/ios_build
+
+    publishing:
+      app_store_connect:
+        api_key_path: $APPCONNECT_JSON
+        distribution_type: testflight
+        ipa_path: $CM_BUILD_DIR/ios_build/MyApp.ipa
