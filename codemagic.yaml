@@ -1,19 +1,17 @@
 workflows:
   ios-testflight:
     name: Build iOS → TestFlight
+    # use the Intel Mac mini runner
     instance_type: mac_mini
 
+    # automatically trigger on pushes to main
     triggering:
       events:
         - push
-      branches:
-        - main
+      branch_patterns:
+        - pattern: main
 
-    environment:
-      flutter: false
-      vars:
-        APPCONNECT_JSON: $APPCONNECT_JSON
-
+    # your build steps
     scripts:
       - name: Install JS dependencies
         script: |
@@ -43,8 +41,9 @@ workflows:
             -exportOptionsPlist ios/ExportOptions.plist \
             -exportPath $CM_BUILD_DIR/ios_build
 
+    # publish via your Team’s Developer Portal integration
     publishing:
       app_store_connect:
-        api_key_path: $APPCONNECT_JSON
+        inherit: true
         distribution_type: testflight
         ipa_path: $CM_BUILD_DIR/ios_build/MyApp.ipa
