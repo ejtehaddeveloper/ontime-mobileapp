@@ -123,7 +123,7 @@ const Favorites = () => {
                       onPress={() => handleGoSalon(extractedNumber)}>
                       <View style={{flexDirection: 'row'}}>
                         <Image
-                          source={{uri: item.images.logo}}
+                          source={{uri: `${hostImge}${item?.images?.logo}`}}
                           style={{
                             width: 75,
                             height: 75,

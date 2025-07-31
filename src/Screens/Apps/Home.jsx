@@ -667,7 +667,7 @@ const Home = () => {
                           }}
                           onPress={() => handleGoSalon(item?.id)}>
                           <Image
-                            source={{uri: item.images.logo}}
+                            source={{uri: `${hostImge}${item?.images?.logo}`}}
                             style={{
                               width: Math.min(itemWidth - 10, 72),
                               height: Math.min(itemWidth - 10, 72),

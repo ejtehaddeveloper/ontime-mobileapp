@@ -4,125 +4,100 @@ import {
   Text,
   StyleSheet,
   SafeAreaView,
-  TextInput,
   TouchableOpacity,
   AppState,
   Platform,
+  Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   CodeField,
   Cursor,
   useBlurOnFulfill,
   useClearByFocusCell,
 } from 'react-native-confirmation-code-field';
-import { useRoute } from '@react-navigation/native';
 import { Colors } from '../../assets/constants';
 import { SendOTP, ResendOTP, DeviceToken } from '../../context/api';
-// import { verifyOTP } from '../../context/api'
 import { AuthContext } from '../../context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Loading from '../../assets/common/Loading';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import i18n from '../../assets/locales/i18';
 
-
-const route = useRoute();
-const phone = route.params?.phone;
-
-
 const CELL_COUNT = 4;
 
 const OTP = () => {
   const [value, setValue] = useState('');
   const ref = useBlurOnFulfill({ value, cellCount: CELL_COUNT });
-  const [props, getCellOnLayoutHandler] = useClearByFocusCell({
-    value,
-    setValue,
-  });
+  const [props, getCellOnLayoutHandler] = useClearByFocusCell({ value, setValue });
 
   const navigation = useNavigation();
+  const route = useRoute();
+  const phone = route.params?.phone;
   const { login } = useContext(AuthContext);
+
   const [loading, setLoading] = useState(false);
   const [resendCountdown, setResendCountdown] = useState(10);
   const appState = useRef(AppState.currentState);
 
-  // Focus on screen focus (navigation)
+  // Focus when screen appears
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      setTimeout(() => {
-        ref.current?.focus();
-      }, 400);
+    const unsub = navigation.addListener('focus', () => {
+      setTimeout(() => ref.current?.focus(), 400);
     });
-    return unsubscribe;
+    return unsub;
   }, [navigation]);
 
-  // Refocus on App Resume
+  // Refocus on resume
   useEffect(() => {
-    const sub = AppState.addEventListener('change', nextAppState => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active'
-      ) {
-        setTimeout(() => {
-          ref.current?.focus();
-        }, 300);
+    const sub = AppState.addEventListener('change', next => {
+      if (appState.current.match(/inactive|background/) && next === 'active') {
+        setTimeout(() => ref.current?.focus(), 300);
       }
-      appState.current = nextAppState;
+      appState.current = next;
     });
     return () => sub.remove();
   }, []);
 
-  // Countdown
+  // Countdown timer
   useEffect(() => {
     if (resendCountdown > 0) {
-      const timer = setInterval(() => {
-        setResendCountdown(prev => prev - 1);
-      }, 1000);
+      const timer = setInterval(() => setResendCountdown(c => c - 1), 1000);
       return () => clearInterval(timer);
     }
   }, [resendCountdown]);
 
-const handleContinue = async () => {
-  const otpCode = value;
-
-  if (otpCode.length === 4) {
+  const handleContinue = async () => {
+    if (value.length !== CELL_COUNT) {
+      return Alert.alert(i18n.t('Error'), i18n.t('Please enter a valid OTP code')); 
+    }
     setLoading(true);
     try {
-      const response = await SendOTP(otpCode, login);
-      if (response) {
-        const fcmToken = await AsyncStorage.getItem('fcm_token');
-        const type = Platform.OS;
-        const response2 = await DeviceToken(fcmToken, type);
-        if (response2) {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'App' }],
-          });
+      const ok = await SendOTP(value, login);
+      if (ok) {
+        const fcm = await AsyncStorage.getItem('fcm_token');
+        const resp2 = await DeviceToken(fcm, Platform.OS);
+        if (resp2) {
+          navigation.reset({ index: 0, routes: [{ name: 'App' }] });
         }
       }
-    } catch (error2) {
-      Alert.alert('Error', error2.message || 'Failed to verify OTP');
+    } catch (e) {
+      Alert.alert(i18n.t('Error'), e.message || i18n.t('Failed to verify OTP'));
     } finally {
       setLoading(false);
     }
-  } else {
-    Alert.alert('Error', 'Please enter a valid OTP code');
-  }
-};
-
-
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons
-            name={i18n.language === 'en' ? 'arrow-back' : 'arrow-forward'}
-            size={25}
-            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-          />
-        </TouchableOpacity>
-      <Text style={styles.heading}>Enter OTP</Text>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <Ionicons
+          name={i18n.language === 'en' ? 'arrow-back' : 'arrow-forward'}
+          size={25}
+        />
+      </TouchableOpacity>
+
+      <Text style={styles.heading}>{i18n.t('Verify OTP')}</Text>
 
       <CodeField
         ref={ref}
@@ -130,17 +105,19 @@ const handleContinue = async () => {
         value={value}
         onChangeText={setValue}
         cellCount={CELL_COUNT}
-        rootStyle={styles.codeFieldRoot}
+        rootStyle={[styles.codeFieldRoot, { direction: 'ltr' }]}
+        textInputStyle={styles.ltrInput}
         keyboardType="number-pad"
-        textContentType="oneTimeCode"   // iOS
-        autoComplete="sms-otp"          // Android
-        importantForAutofill="yes"      // Android
-        autoFocus={true}
+        textContentType="oneTimeCode"
+        autoComplete="sms-otp"
+        importantForAutofill="yes"
+        autoFocus
         renderCell={({ index, symbol, isFocused }) => (
           <View
             key={index}
             style={[styles.cellRoot, isFocused && styles.focusCell]}
-            onLayout={getCellOnLayoutHandler(index)}>
+            onLayout={getCellOnLayoutHandler(index)}
+          >
             <Text style={styles.cellText}>
               {symbol || (isFocused ? <Cursor /> : null)}
             </Text>
@@ -149,34 +126,58 @@ const handleContinue = async () => {
       />
 
       {resendCountdown > 0 ? (
-        <Text style={styles.resendText}>Resend in 00:{resendCountdown}s</Text>
+        <Text style={styles.resendText}>
+          {i18n.t('Resend in')} 00:{resendCountdown}s
+        </Text>
       ) : (
-       <TouchableOpacity
-  onPress={async () => {
-    try {
-      setResendCountdown(30); // Restart timer
-      const phone = await AsyncStorage.getItem('phone'); // or pass from props
-      const response = await ResendOTP(phone); // assuming your API needs phone number
-      console.log('Resend OTP Response:', response);
-    } catch (err) {
-      console.log('Resend Error:', err.message);
-    }
-  }}>
-  <Text style={styles.resendLink}>Resend Code</Text>
-</TouchableOpacity>
+        <TouchableOpacity
+          onPress={async () => {
+            setResendCountdown(30);
+            try {
+              const ph = await AsyncStorage.getItem('phone');
+              await ResendOTP(ph || phone);
+            } catch {}
+          }}
+        >
+          <Text style={styles.resendLink}>{i18n.t('Resend Code')}</Text>
+        </TouchableOpacity>
       )}
 
       <TouchableOpacity style={styles.button} onPress={handleContinue}>
-        {loading ? <Loading /> : <Text style={styles.buttonText}>Confirm</Text>}
+        {loading ? (
+          <Loading />
+        ) : (
+          <Text style={styles.buttonText}>{i18n.t('Confirm')}</Text>
+        )}
       </TouchableOpacity>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  heading: { fontSize: 20, marginBottom: 30 },
-  codeFieldRoot: { marginTop: 20, width: '80%' },
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  backBtn: {
+    position: 'absolute',
+    top: 20,
+    left: 20
+  },
+  heading: {
+    fontSize: 20,
+    marginBottom: 30
+  },
+  codeFieldRoot: {
+    marginTop: 20,
+    width: '80%',
+    flexDirection: 'row'
+  },
+  ltrInput: {
+    textAlign: 'left',
+    writingDirection: 'ltr'
+  },
   cellRoot: {
     width: 55,
     height: 60,
@@ -185,20 +186,37 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 10,
-    marginHorizontal: 5,
+    marginHorizontal: 5
   },
-  cellText: { fontSize: 24, color: '#000' },
-  focusCell: { borderColor: Colors.primary, borderWidth: 2 },
-  resendText: { marginTop: 20, color: Colors.textMuted },
-  resendLink: { marginTop: 20, color: Colors.primary, fontWeight: '600' },
+  cellText: {
+    fontSize: 24,
+    color: '#000',
+    writingDirection: 'ltr'
+  },
+  focusCell: {
+    borderColor: Colors.primary,
+    borderWidth: 2
+  },
+  resendText: {
+    marginTop: 20,
+    color: Colors.textMuted
+  },
+  resendLink: {
+    marginTop: 20,
+    color: Colors.primary,
+    fontWeight: '600'
+  },
   button: {
     backgroundColor: Colors.primary,
     paddingHorizontal: 60,
     paddingVertical: 15,
     borderRadius: 12,
-    marginTop: 30,
+    marginTop: 30
   },
-  buttonText: { color: '#fff', fontSize: 16 },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16
+  }
 });
 
 export default OTP;
