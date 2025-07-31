@@ -1,12 +1,12 @@
 workflows:
   ios-testflight:
     name: Build iOS → TestFlight
-    instance_type: mac_m1
+    instance_type: mac_mini
 
     triggering:
       events:
         - push
-      branch_patterns:
+      branches:
         - main
 
     environment:
