@@ -24,7 +24,7 @@ import Loading from '../../assets/common/Loading';
 import {t} from 'i18next';
 import i18n from '../../assets/locales/i18';
 import {screenHeight} from '../../assets/constants/ScreenSize';
-
+import hostImge from '../../context/hostImge';
 const Favorites = () => {
   // const noti = salons;
   const {isAuth} = useContext(AuthContext);
@@ -87,86 +87,99 @@ const Favorites = () => {
 
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
-    <ScrollView style={styles.contaner}>
-      <View style={{alignItems: 'center', marginTop: 25}}>
-        <Text style={styles.title}>{t('Favorites')}</Text>
-      </View>
-      {loading ? (
-        <Loading />
-      ) : (
-        <>
-          {favorite?.length === 0 ? (
-            <View
-              style={{
-                flex: 1,
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: screenHeight * 0.12,
-              }}>
-              <Text style={[{alignSelf: 'center', width: 195}]}>
-                {t("You don't have any favorites yet")}
-              </Text>
-            </View>
-          ) : (
-            <View style={{marginTop: 15}}>
-              <FlatList
-                nestedScrollEnabled={true}
-                data={favorite}
-                renderItem={({item}) => {
-                  const slug = item.slug;
-                  const number = slug.match(/\d+$/);
-
-                  const extractedNumber = number ? number[0] : null;
-                  return (
-                    <TouchableOpacity
-                      style={styles.body}
-                      onPress={() => handleGoSalon(extractedNumber)}>
-                      <View style={{flexDirection: 'row'}}>
-                        <Image
-                          source={{uri: `${hostImge}${item?.images?.logo}`}}
-                          style={{
-                            width: 75,
-                            height: 75,
-                            borderRadius: 50,
-                            margin: 10,
-                          }}
-                        />
-                        <View style={{justifyContent: 'center'}}>
-                          <Text style={styles.lable}>
-                            {i18n.language === 'ar'
-                              ? item?.name_ar
-                              : item?.name}
-                          </Text>
+      <ScrollView contentContainerStyle={styles.contaner}>
+        <View style={{alignItems: 'center', marginTop: 25}}>
+          <Text style={styles.title}>{t('Favorites')}</Text>
+        </View>
+        {loading ? (
+          <Loading />
+        ) : (
+          <>
+            {favorite?.length === 0 ? (
+              <View
+                style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: screenHeight * 0.18,
+                }}>
+                <Ionicons
+                  name="heart-dislike-outline"
+                  size={60}
+                  color={Colors.primary}
+                  style={{marginBottom: 16}}
+                />
+                <Text
+                  style={{
+                    alignSelf: 'center',
+                    width: 240,
+                    textAlign: 'center',
+                    fontSize: 16,
+                    color: Colors.black3,
+                  }}>
+                  {t("You don't have any favorites yet")}
+                </Text>
+              </View>
+            ) : (
+              <View style={{}}>
+                <FlatList
+                  nestedScrollEnabled={true}
+                  data={favorite}
+                  renderItem={({item}) => {
+                    const slug = item.slug;
+                    const number = slug.match(/\d+$/);
+                    const extractedNumber = number ? number[0] : null;
+                    return (
+                      <TouchableOpacity
+                        style={styles.body}
+                        onPress={() => handleGoSalon(extractedNumber)}>
+                        <View style={{flexDirection: 'row'}}>
+                          <Image
+                            source={{uri: `${hostImge}${item?.images?.logo}`}}
+                            style={{
+                              width: 55,
+                              height: 55,
+                              borderRadius: 50,
+                              margin: 10,
+                            }}
+                          />
+                          <View style={{justifyContent: 'center'}}>
+                            <Text style={styles.lable}>
+                              {i18n.language === 'ar'
+                                ? item?.name_ar
+                                : item?.name}
+                            </Text>
+                          </View>
                         </View>
-                      </View>
-                      <Ionicons
-                        name="heart"
-                        size={25}
-                        color={Colors.primary}
-                        onPress={() => heart(item?.id)}
-                      />
-                    </TouchableOpacity>
-                  );
-                }}
-                keyExtractor={item => item.id.toString()}
-                refreshing={loading}
-                onRefresh={handleRefresh}
-                ListFooterComponent={
-                  loadingMore ? <Text>Loading...</Text> : null
-                }
-              />
-            </View>
-          )}
-        </>
-      )}
-    </ScrollView></SafeAreaView>
+                        <Ionicons
+                          name="heart"
+                          size={24}
+                          color={Colors.primary}
+                          onPress={() => heart(item?.id)}
+                        />
+                      </TouchableOpacity>
+                    );
+                  }}
+                  keyExtractor={item => item.id.toString()}
+                  refreshing={loading}
+                  onRefresh={handleRefresh}
+                  ListFooterComponent={
+                    loadingMore ? <Text>Loading...</Text> : null
+                  }
+                />
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 const styles = StyleSheet.create({
   contaner: {
     flex: 1,
     // padding: 20,
-    paddingBottom: 100,
+    // paddingBottom: 100,
     direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
   title: {
@@ -192,8 +205,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderBottomWidth: 1,
     flexDirection: 'row',
-    marginTop: 15,
-    padding: 20,
+    marginTop: 8,
+    padding: 8,
+    paddingHorizontal: 15,
     alignItems: 'center',
   },
   button: {

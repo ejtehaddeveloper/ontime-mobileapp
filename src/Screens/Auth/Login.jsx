@@ -44,7 +44,9 @@ const Login = () => {
       console.log('signup error', error);
       if (error?.phone_number[0].includes('User not found.')) {
         setErrorText(t('This user is not found'));
-      }else if (error?.phone_number[0].includes('The selected phone number is invalid.')) {
+      } else if (
+        error?.phone_number[0].includes('The selected phone number is invalid.')
+      ) {
         setErrorText(t('This user is not found'));
       }
     } finally {
@@ -117,16 +119,14 @@ const Login = () => {
                   direction: 'ltr',
                 },
               ]}>
-              <View style={{flexDirection: 'row'}}>
-                <Text style={{top: 10}}>
-                  {country ? `${country.dial_code}` : '+974'}
-                </Text>
+              <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                <Text>{country ? `${country.dial_code}` : '+974'}</Text>
+
                 <View
                   style={{
-                    paddingTop: 10,
                     borderRightWidth: 1,
-                    marginHorizontal: 3,
-                    paddingHorizontal: 3,
+                    marginHorizontal: 5,
+                    paddingHorizontal: 5,
                   }}>
                   <Ionicons
                     name="chevron-down-outline"
@@ -134,15 +134,17 @@ const Login = () => {
                     onPress={() => setIsVisible(true)}
                   />
                 </View>
+
                 <TextInput
                   placeholder={t('Enter your Phone')}
                   value={phone}
                   onChangeText={value => setPhone(value)}
-                  // style={styles.cont}
                   placeholderTextColor={Colors.black3}
                   keyboardType="phone-pad"
+                  style={{flex: 1}}
                 />
               </View>
+              6
               <CountryPicker
                 show={isVisible}
                 pickerButtonOnPress={handleCountrySelect}

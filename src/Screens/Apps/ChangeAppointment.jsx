@@ -39,7 +39,20 @@ const months = [
   'Nov',
   'Dec',
 ];
-
+const arabicMonths = [
+  'يناير',
+  'فبراير',
+  'مارس',
+  'أبريل',
+  'مايو',
+  'يونيو',
+  'يوليو',
+  'أغسطس',
+  'سبتمبر',
+  'أكتوبر',
+  'نوفمبر',
+  'ديسمبر',
+];
 const ChangeAppointment = ({route}) => {
   const {appointmentID, salonId, serviceID, isSubService} = route.params;
   // let salonId = 10;
@@ -122,10 +135,22 @@ const ChangeAppointment = ({route}) => {
     const todayMonth = today.getMonth();
     const todayDate = today.getDate();
 
-    const daysArray = Array.from({length: daysCount}, (_, index) => ({
-      id: index + 1,
-      day: String(index + 1).padStart(2, '0'),
-    })).filter(
+    const daysArray = Array.from({length: daysCount}, (_, index) => {
+      const dayDate = new Date(
+        currentYear,
+        parseInt(currentMonth, 10) - 1,
+        index + 1,
+      );
+      const dayName = dayDate.toLocaleString(
+        i18n.language === 'ar' ? 'ar' : 'default',
+        {weekday: 'short'},
+      );
+      return {
+        id: index + 1,
+        day: String(index + 1).padStart(2, '0'),
+        dayName: dayName, // Store the abbreviated day name
+      };
+    }).filter(
       day =>
         todayMonth !== parseInt(currentMonth, 10) - 1 || day.id >= todayDate,
     );
@@ -186,22 +211,50 @@ const ChangeAppointment = ({route}) => {
     };
     fetchTimeSlots();
   }, [EmpID, date, isSubService, salonId, selectedDay, serviceID]);
+  const fetchTimeSlot = async () => {
+    setLoadTime(true);
+    setErrorT('');
+    setSelectedDate(null);
+    setSelectedEndDate(null);
+    try {
+      const Data = await getTime(salonId, serviceID, date, EmpID, isSubService);
+      setTime(Data);
+      // console.log('HERE', Data);
+    } catch (error) {
+      console.log('Error fetching time slots 111:', error);
+      // if (error === 'Salon is not working on this day.') {
+      //   setErrorT(error);
+      // } else {
+      setErrorT(error);
+      // }
 
+      // (NOBRIDGE) LOG  salonId: 10, serviceId: a47b43c6-c140-4817-a6d1-50b5cb32d38e,Date : 2025-04-28, employee_id 93, isSubService: 1
+      // (NOBRIDGE) LOG  new Time:
+    } finally {
+      setLoadTime(false);
+    }
+  };
   const renderDateItemDay = ({item}) => {
     const isSelected = selectedDay === item.day;
     return (
       <TouchableOpacity
         style={[
-          styles.item,
+          styles.item2,
           {backgroundColor: isSelected ? Colors.primary : 'white'},
         ]}
-        onPress={() => setSelectedDay(item.day)}>
+        onPress={() => [setSelectedDay(item.day), fetchTimeSlot()]}>
+        <Text
+          style={[styles.selectDate, {color: isSelected ? 'white' : '#000'}]}>
+          {i18n.language === 'ar'
+            ? item.day.toString().replace(/\d/g, digit => '٠١٢٣٤٥٦٧٨٩'[digit])
+            : item.day}
+        </Text>
         <Text
           style={[
             styles.selectDate,
-            {color: isSelected ? 'white' : Colors.black3},
+            {color: isSelected ? 'white' : '#000', fontSize: 12},
           ]}>
-          {item.day}
+          {item.dayName}
         </Text>
       </TouchableOpacity>
     );
@@ -273,6 +326,7 @@ const ChangeAppointment = ({route}) => {
         setPop('Unknown error');
     }
   };
+  const monthsToDisplay = i18n.language === 'ar' ? arabicMonths : months;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -360,7 +414,7 @@ const ChangeAppointment = ({route}) => {
               </TouchableOpacity>
             )}
             <Text>
-              {months[parseInt(currentMonth, 10) - 1]}, {currentYear}
+              {monthsToDisplay[parseInt(currentMonth, 10) - 1]}, {currentYear}
             </Text>
             {i18n.language === 'en' ? (
               <TouchableOpacity onPress={nextMonth}>
@@ -410,14 +464,16 @@ const ChangeAppointment = ({route}) => {
                   flexDirection: 'row',
                   flexWrap: 'wrap',
                   justifyContent: 'center',
-                 width: screenWidth * 0.88,
+                  direction: 'ltr',
+
+                  // width: screenWidth * 0.88,
                 }}>
                 {AvTime?.sort((a, b) =>
                   a.start_time.localeCompare(b.start_time),
                 ).map(item => {
-                  const formattedTime = moment(item.start_time, 'HH:mm').format(
-                    'hh:mm a',
-                  );
+                  const formattedTime = moment(item.start_time, 'HH:mm')
+                    .locale(i18n.language === 'ar' ? 'ar' : 'en')
+                    .format('hh:mm a');
 
                   return (
                     <TouchableOpacity
@@ -446,8 +502,8 @@ const ChangeAppointment = ({route}) => {
                             item.available === true
                               ? selectedDate === item.start_time
                                 ? 'white'
-                                : Colors.black3
-                              : Colors.black3,
+                                : '#000'
+                              : '#000',
                         }}>
                         {formattedTime}
                       </Text>
@@ -622,7 +678,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 15,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    width: '25%',
   },
   itemText: {
     marginHorizontal: 5,
@@ -749,7 +806,18 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   selectDate: {
-    padding: 8,
+    fontSize: 19,
+  },
+  item2: {
+    margin: 5,
+    height: 66,
+    // borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 5,
+    paddingVertical: 15,
+    alignItems: 'center',
+    width: 51,
+    justifyContent: 'space-between',
   },
 });
 

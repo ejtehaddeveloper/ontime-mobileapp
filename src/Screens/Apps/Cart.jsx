@@ -119,7 +119,7 @@ const Cart = () => {
   };
 
   const renderServiceItem = ({item}) => (
-    <View style={styles.serv}>
+    <View style={[styles.serv]}>
       <View>
         <Text style={styles.text}>
           {i18n.language === 'ar'
@@ -131,13 +131,15 @@ const Cart = () => {
             ? item?.employee?.name_ar
             : item?.employee?.name}
         </Text>
+        <Text style={[styles.title2, {fontSize: 10}]}>
+          {item?.date.slice(5, item?.date.length)} {t('at')} {item?.start_time}
+        </Text>
       </View>
-      <View style={{flexDirection: 'row'}}>
-        <Text style={{marginTop: 10, marginRight: 15}}>
+      <View style={{flexDirection: 'row', alignItems: 'center'}}>
+        <Text style={{}}>
           {item?.service?.price} <Text style={{fontSize: 12}}>QAR</Text>
         </Text>
-        <TouchableOpacity
-          style={[styles.item, {paddingLeft: 15, paddingRight: 15}]}>
+        <TouchableOpacity style={[styles.item, {paddingLeft: 5}]}>
           <Ionicons
             name="remove-circle-outline"
             size={25}
@@ -151,31 +153,27 @@ const Cart = () => {
 
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
-        <View style={styles.header}>
-          <Ionicons
-            name={isRTL ? 'arrow-forward' : 'arrow-back'}
-            size={25}
-            onPress={handleGoBack}
-          />
-          <Text style={styles.title}>{t('My Cart')}</Text>
-          <View />
-        </View>
-      <ScrollView style={styles.contaner}>
+      <View style={styles.header}>
+        <Ionicons
+          name={isRTL ? 'arrow-forward' : 'arrow-back'}
+          size={25}
+          onPress={handleGoBack}
+        />
+        <Text style={styles.title}>{t('Checkout')}</Text>
+        <View />
+      </View>
+      <ScrollView style={[styles.contaner]}>
         {loading ? (
           <Loading />
         ) : (
-          <>
-            <View style={{margin: 15}}>
-              <Text style={styles.modalTitle}>{t('Checkout')}</Text>
-            </View>
-            <View style={{margin: 15}}>
+          <View style={{marginHorizontal: 20}}>
+            <View style={{}}>
               <Text style={styles.modalTitle}>
                 {i18n.language === 'ar'
                   ? cart?.[0]?.salon?.name_ar
                   : cart?.[0]?.salon?.name}
               </Text>
             </View>
-
             <FlatList
               nestedScrollEnabled={true}
               data={cart}
@@ -228,7 +226,9 @@ const Cart = () => {
                 <TouchableOpacity
                   style={styles.confirmButton}
                   onPress={Confirm}>
-                  <Text style={styles.buttonText}>{t('Confirm')}</Text>
+                  <Text style={(styles.buttonText, {color: 'white'})}>
+                    {t('Confirm')}
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -329,7 +329,7 @@ const Cart = () => {
                 </Pressable>
               </Pressable>
             </Modal>
-          </>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -470,8 +470,9 @@ const styles = StyleSheet.create({
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '95%',
-    padding: 15,
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 15,
     alignSelf: 'center',
   },
   modalTitle: {
@@ -480,10 +481,10 @@ const styles = StyleSheet.create({
   },
   serviceList: {
     maxHeight: screenHeight * 0.3,
-    padding: 15,
+    marginTop: 15,
   },
   serv: {
-    padding: 10,
+    paddingVertical: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',

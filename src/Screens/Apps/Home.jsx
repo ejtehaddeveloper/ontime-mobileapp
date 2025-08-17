@@ -50,7 +50,7 @@ const Home = () => {
   const itemWidth =
     (width - sidePadding * 2 - itemMargin * (numColumns - 1)) / numColumns;
 
-  const searchBarWidth = Math.min(width * 0.75, 450);
+  const searchBarWidth = Math.min(width * 0.8, 450);
 
   const [isFilterVisible, setFilterVisible] = useState(false);
   const [filter, setFilter] = useState(false);
@@ -692,7 +692,7 @@ const Home = () => {
                   </View>
                 )}
 
-                <View style={{padding: 16, width: '98%'}}>
+                <View style={{padding: 16, width: '100%'}}>
                   <View style={styles.headerSubSection}>
                     <Text style={styles.welcome}>{t('Salons')}</Text>
                     <TouchableOpacity onPress={goView_all}>
@@ -744,6 +744,7 @@ const styles = StyleSheet.create({
   recentListContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    paddingHorizontal: 16,
   },
   title: {
     fontSize: 18,

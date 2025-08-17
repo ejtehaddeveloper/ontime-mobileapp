@@ -258,7 +258,7 @@ const DateBook = ({route}) => {
           styles.item2,
           {backgroundColor: isSelected ? Colors.primary : 'white'},
         ]}
-        onPress={() => [setSelectedDay(item.day),fetchTimeSlot()]}>
+        onPress={() => [setSelectedDay(item.day), fetchTimeSlot()]}>
         <Text
           style={[styles.selectDate, {color: isSelected ? 'white' : '#000'}]}>
           {i18n.language === 'ar'
@@ -306,19 +306,20 @@ const DateBook = ({route}) => {
             : item?.service?.name}
         </Text>
         <Text style={styles.title2}>
-          {item?.employee?.name?.split(' ').slice(0, 2).join(' ')} {'...'}
+          {item?.employee?.name?.split(' ').slice(0, 2).join(' ')}
         </Text>
       </View>
       <View style={{flexDirection: 'row'}}>
         <View>
           <Text style={{marginRight: 15}}>
-            {item?.service?.price}{' '}
+            {item?.service?.price.slice(0, -3)}{' '}
             <Text style={{fontSize: 12}}>
               {i18n.language === 'ar' ? 'ر.ق' : 'QAR'}
             </Text>
           </Text>
           <Text style={[styles.title2, {fontSize: 10}]}>
-            {item?.date} {t('at')} {item?.start_time}
+            {item?.date.slice(5, item?.date.length)} {t('at')}{' '}
+            {item?.start_time}
           </Text>
         </View>
         <TouchableOpacity
@@ -924,9 +925,9 @@ const DateBook = ({route}) => {
                     </View> */}
                           {cart.length > 0 && (
                             <View style={styles.totalRow}>
-                              <Text style={styles.title2}>{t('Total')} :</Text>
+                              <Text style={styles.title2}>{t('Total')}</Text>
                               <Text style={styles.priceText}>
-                                {TPrice?.total_price}{' '}
+                                {TPrice?.total_price.slice(0, -3)}{' '}
                                 <Text style={{fontSize: 12}}>
                                   {i18n.language === 'ar' ? 'ر.ق' : 'QAR'}
                                 </Text>
@@ -1205,15 +1206,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     marginBottom: 3,
-    color: Colors.black3,
+    color: Colors.black2,
   },
   priceText: {
-    marginRight: 15,
+    paddingRight: 15,
+    fontWeight: 800,
   },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '95%',
+    width: '100%',
     padding: 10,
     alignSelf: 'center',
   },
@@ -1249,7 +1251,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   selectDate: {
-    // padding: 8,
     fontSize: 19,
   },
 });

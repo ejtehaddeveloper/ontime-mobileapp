@@ -27,6 +27,7 @@ import i18n from '../../assets/locales/i18';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
 import hostImge from '../../context/hostImge';
+import {colors} from 'react-native-keyboard-controller/lib/typescript/components/KeyboardToolbar/colors';
 
 const Service = ({route}) => {
   const {t} = useTranslation();
@@ -112,7 +113,21 @@ const Service = ({route}) => {
   const handleService = async uid => {
     try {
       const data = await getSubServices(uid);
-      if (data) {
+      if (data && Array.isArray(data)) {
+        const prices = data
+          .map(s => {
+            const p = parseFloat(s.price);
+            return Number.isFinite(p) ? p : null;
+          })
+          .filter(p => p != null);
+
+        const min_price = prices.length ? Math.min(...prices) : null;
+        const max_price = prices.length ? Math.max(...prices) : null;
+
+        setSalons(prev =>
+          prev.map(s => (s.uuid === uid ? {...s, min_price, max_price} : s)),
+        );
+
         setSubService(data);
         setIsVisible(true);
       }
@@ -123,56 +138,133 @@ const Service = ({route}) => {
     }
   };
 
-  const renderServiceItem = ({item}) => (
-    <TouchableOpacity
-      style={styles.serv}
-      onPress={() => [
-        item?.has_sub_services ? handleService(item.uuid) : DateBook(item.uuid),
-      ]}>
-      <View style={styles.serviceInfoContainer}>
-        <Text
-          style={[styles.text, {textAlign: isRTL ? 'right' : 'left'}]}
-          numberOfLines={1}>
-          {isRTL ? item?.name_ar : item?.name}
-        </Text>
-        <Text style={styles.title2}>{item?.duration} Mins</Text>
-      </View>
-      <View style={styles.serviceActionContainer}>
-        {item?.has_sub_services === false && (
-          <Text style={styles.priceText}>
-            {item?.price} <Text style={{fontSize: 12}}>QAR</Text>
-          </Text>
-        )}
-        <TouchableOpacity
-          style={styles.selectButton}
-          onPress={() =>
-            item?.has_sub_services
-              ? handleService(item.uuid)
-              : DateBook(item.uuid)
-          }>
-          <Text style={styles.selectButtonText}>
-            {t(item?.has_sub_services ? 'Details' : 'Select')}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
+  const renderServiceItem = async ({item}) => {
+    const isSub = !!item?.has_sub_services;
+    let minPrice = null;
+    let maxPrice = null;
+    let minDuration = null;
+    let maxDuration = null;
+    if (isSub) {
+      const uid = item?.uuid;
+      const data = await getSubServices(uid);
+      if (data && Array.isArray(data)) {
+        const prices = data
+          .map(s => {
+            const p = parseFloat(s.price);
+            return Number.isFinite(p) ? p : null;
+          })
+          .filter(p => p != null);
+
+        minPrice = prices.length ? Math.min(...prices) : null;
+        maxPrice = prices.length ? Math.max(...prices) : null;
+        const durations = data
+          .map(s => {
+            const d = parseInt(s.duration, 10);
+            return Number.isFinite(d) ? d : null;
+          })
+          .filter(d => d != null);
+
+        minDuration = durations.length ? Math.min(...durations) : null;
+        maxDuration = durations.length ? Math.max(...durations) : null;
+      }
+    }
+    const singlePrice = item?.price;
+
+    return (
+      <TouchableOpacity
+        style={styles.serv}
+        onPress={() =>
+          isSub ? handleService(item.uuid) : DateBook(item.uuid)
+        }>
+        <View style={styles.serviceInfoContainer}>
+          <View style={styles.serviceTitleRow}>
+            <Text
+              style={[styles.text, {textAlign: isRTL ? 'right' : 'left'}]}
+              numberOfLines={1}>
+              {isRTL ? item?.name_ar : item?.name}
+            </Text>
+          </View>
+
+          <View style={styles.serviceMetaRow}>
+            <Text style={styles.title2}>
+              {isSub
+                ? `${minDuration} - ${maxDuration} ${'Mins'}`
+                : item?.duration + ' ' + t('Mins')}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.serviceActionContainer}>
+          {!isSub ? (
+            <Text style={styles.priceText}>
+              {singlePrice} <Text style={{fontSize: 12}}>QAR</Text>
+            </Text>
+          ) : (
+            <Text style={styles.priceText}>
+              {minPrice != null &&
+                maxPrice != null &&
+                `${minPrice} - ${maxPrice} QAR`}
+            </Text>
+          )}
+          <TouchableOpacity
+            style={[styles.selectButton, isSub ? styles.detailsButton : null]}
+            onPress={() =>
+              isSub ? handleService(item.uuid) : DateBook(item.uuid)
+            }>
+            <Text style={styles.selectButtonText}>
+              {t(isSub ? 'Details' : 'Select')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const renderServiceItem2 = ({item}) => (
-    <View style={styles.serv}>
-      <View>
-        <Text style={styles.text}>{item?.name}</Text>
-        <Text style={styles.title2}>{item?.duration} Mins</Text>
-      </View>
-      <View style={{flexDirection: 'row'}}>
-        <Text style={{marginTop: 10, marginRight: 15}}>
-          {item?.price} <Text style={{fontSize: 12}}>QAR</Text>
-        </Text>
-        <TouchableOpacity
-          style={[styles.selectButton]}
-          onPress={() => DateBook2(item.uuid)}>
-          <Text style={styles.selectButtonText}>{t('Select')}</Text>
-        </TouchableOpacity>
+    <View
+      style={[
+        styles.serv,
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingVertical: 10,
+          paddingHorizontal: 14,
+        },
+      ]}>
+      <View
+        style={{
+          flex: 1,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+        <View>
+          <Text style={styles.text}>{item?.name}</Text>
+          <Text style={styles.title2}>
+            {item?.duration} {t('Mins')}
+          </Text>
+        </View>
+        <View
+          style={{
+            alignItems: 'flex-end',
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 8,
+          }}>
+          <Text
+            style={{fontWeight: '600', marginBottom: 8, color: Colors.text}}>
+            {item?.price}{' '}
+            <Text style={{fontSize: 12, color: Colors.text}}>QAR</Text>
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.selectButton,
+              {paddingHorizontal: 14, borderRadius: 20},
+            ]}
+            onPress={() => DateBook2(item.uuid)}>
+            <Text style={styles.selectButtonText}>{t('Select')}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -213,7 +305,9 @@ const Service = ({route}) => {
                   <Text
                     style={[
                       styles.locationText,
-                      {textAlign: isRTL ? 'right' : 'left'},
+                      {
+                        textAlign: isRTL ? 'right' : 'left',
+                      },
                     ]}
                     numberOfLines={1}>
                     {SalonInfo?.location?.address}
@@ -370,13 +464,14 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 6,
+
+    color: '#202020',
   },
   description: {
     fontSize: 12,
     fontWeight: '700',
     marginBottom: 6,
-    color: Colors.black3,
+    color: '#bdc0c5',
     maxWidth: '90%',
   },
   locationContainer: {
@@ -410,11 +505,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   categoryTitle: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 35,
+    color: Colors.text,
+    marginBottom: 15,
+    fontWeight: 'bold',
     alignSelf: 'center',
     textAlign: 'center',
-    marginBottom: 20,
   },
   filterListContainer: {
     paddingHorizontal: 10,
@@ -454,6 +550,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   text: {
+    color: Colors.text,
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 4,
@@ -461,13 +558,14 @@ const styles = StyleSheet.create({
   title2: {
     fontSize: 12,
     fontWeight: '500',
-    color: Colors.black3,
+    color: '#bdbdbd',
   },
   priceText: {
     fontSize: 14,
     fontWeight: '600',
     marginRight: 15,
     margin: 5,
+    color: Colors.text,
   },
   selectButton: {
     paddingHorizontal: 15,

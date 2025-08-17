@@ -28,7 +28,7 @@ import {
 } from '../../context/api';
 import {t} from 'i18next';
 import i18n from '../../assets/locales/i18';
-
+import hostImge from '../../context/hostImge';
 const isRTL = i18n.language === 'ar';
 I18nManager.forceRTL(isRTL);
 
@@ -159,21 +159,14 @@ const View_all = () => {
 
     return (
       <TouchableOpacity
-        style={[
-          styles.chip,
-          isSelected && styles.selectedChip,
-        ]}
+        style={[styles.chip, isSelected && styles.selectedChip]}
         onPress={() => handleFilter(item.id)}>
-        <Text
-          style={[
-            styles.chipText,
-            isSelected && styles.selectedText,
-          ]}>
-            <Ionicons
-              name="location"
-              color={isSelected ? 'white' : Colors.black3}
-              size={20}
-            />
+        <Text style={[styles.chipText, isSelected && styles.selectedText]}>
+          <Ionicons
+            name="location"
+            color={isSelected ? 'white' : Colors.black3}
+            size={20}
+          />
           {isRTL ? item.city_ar : item.city}
         </Text>
       </TouchableOpacity>
@@ -438,7 +431,13 @@ const View_all = () => {
                             {t('Clear')}
                           </Text>
                         </TouchableOpacity>
-                        <Text style={[styles.title,{ textAlign: isRTL ? 'right' : 'left' }]}>{t('Services')}</Text>
+                        <Text
+                          style={[
+                            styles.title,
+                            {textAlign: isRTL ? 'right' : 'left'},
+                          ]}>
+                          {t('Services')}
+                        </Text>
                         <View style={styles.chipContainer}>
                           {service.map((Service, index) => {
                             const isSelected = Services.includes(Service.uuid);
@@ -463,7 +462,13 @@ const View_all = () => {
                         </View>
                       </View>
                       <View>
-                        <Text style={[styles.title,{ textAlign: isRTL ? 'right' : 'left' }]}>{t('Address')}</Text>
+                        <Text
+                          style={[
+                            styles.title,
+                            {textAlign: isRTL ? 'right' : 'left'},
+                          ]}>
+                          {t('Address')}
+                        </Text>
                         <FlatList
                           nestedScrollEnabled={true}
                           data={filterD}
@@ -530,7 +535,13 @@ const View_all = () => {
                         ))}
                       </View>
                       <View>
-                        <Text style={[styles.title,{ textAlign: isRTL ? 'right' : 'left' }]}>{t('Price')}</Text>
+                        <Text
+                          style={[
+                            styles.title,
+                            {textAlign: isRTL ? 'right' : 'left'},
+                          ]}>
+                          {t('Price')}
+                        </Text>
                         <View
                           style={{
                             flexDirection: 'row',

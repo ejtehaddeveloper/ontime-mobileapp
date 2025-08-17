@@ -121,7 +121,7 @@ const BookingDetails = ({route}) => {
             onPress={handleGoBack}
           />
           <Text style={styles.headerTitle}>{t('Booking')}</Text>
-          <Text style={styles.headerStatus}>{salon?.status}</Text>
+          <Text style={styles.headerStatus}>{t(salon?.status)}</Text>{' '}
         </View>
         {loading ? (
           <Loading />
@@ -130,31 +130,43 @@ const BookingDetails = ({route}) => {
             <Text style={styles.reviewTitle}>{t('Booking Details')}</Text>
 
             <View style={styles.listContainer}>
-              <View style={styles.list}>
+              <View
+                style={[
+                  styles.list,
+                  {
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    paddingBottom: 20,
+                  },
+                ]}>
                 <Text style={styles.listTitle}>{t('Date & Time')}</Text>
-                <Text style={styles.date}>{formatDate(salon?.date)}</Text>
-                <Text style={styles.time}>
-                  {formatTimeTo12Hour(salon?.start_time)}
-                </Text>
+                <View style={{flexDirection: 'column'}}>
+                  <Text style={styles.date}>{formatDate(salon?.date)}</Text>
+                  <Text style={styles.time}>
+                    {formatTimeTo12Hour(salon?.start_time)}
+                  </Text>
+                </View>
               </View>
 
               <View style={styles.list}>
                 <Text style={styles.listTitle}>{t('Salon info')}</Text>
-                <View style={{flexDirection: 'row'}}>
-                  <Text style={styles.stylist}>{t('Name :')} </Text>
-                  <Text style={styles.stylist}>
+                <View style={styles.intoList}>
+                  <Text style={styles.stylist}>{t('Name')} </Text>
+                  <Text style={[styles.stylist, styles.stylelistName]}>
                     {i18n.language === 'ar'
                       ? salon?.salon?.name_ar
                       : salon?.salon?.name}
                   </Text>
                 </View>
-                <View style={{flexDirection: 'row'}}>
-                  <Text style={styles.stylist}>{t('Phone : ')}</Text>
-                  <Text style={styles.stylist}>{salon?.salon?.phone}</Text>
+                <View style={styles.intoList}>
+                  <Text style={styles.stylist}>{t('Phone')}</Text>
+                  <Text style={[styles.stylist, styles.stylelistName]}>
+                    {salon?.salon?.phone}
+                  </Text>
                 </View>
-                <View style={{flexDirection: 'row'}}>
-                  <Text style={styles.stylist}>{t('Address : ')}</Text>
-                  <Text style={styles.stylist}>
+                <View style={styles.intoList}>
+                  <Text style={styles.stylist}>{t('Address')}</Text>
+                  <Text style={[styles.stylist, styles.stylelistName]}>
                     {salon?.salon?.location?.address}
                   </Text>
                 </View>
@@ -166,30 +178,30 @@ const BookingDetails = ({route}) => {
 
               <View style={styles.list}>
                 <Text style={styles.listTitle}>{t('Service')}</Text>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                  }}>
-                  <Text style={styles.service}>
+                <View style={styles.intoList}>
+                  <Text style={styles.stylist}> {`${t('Employee')}`}</Text>
+                  <Text style={[styles.stylist, styles.stylelistName]}>
+                    {salon?.employee?.name}
+                  </Text>
+                </View>
+
+                <View style={styles.intoList}>
+                  <Text style={styles.stylist}> {`${t('Name')}`}</Text>
+                  <Text style={[styles.stylist, styles.stylelistName]}>
                     {(i18n.language === 'ar'
                       ? salon?.service?.name_ar
                       : salon?.service?.name) ||
                       (i18n.language === 'ar'
                         ? salon?.sub_service?.name_ar
                         : salon?.sub_service?.name)}
-                    {`\n${t('Employee')} : `}
-                    {salon?.employee?.name}
-                  </Text>
-
-                  <Text style={styles.price}>
-                    {salon?.service?.price || salon?.sub_service?.price}
                   </Text>
                 </View>
-                <View style={styles.summary}>
-                  <Text style={styles.totalText}>{t('Total')}</Text>
-                  <Text style={styles.totalPrice}>
-                    {salon?.service?.price || salon?.sub_service?.price}
+                <View style={styles.intoList}>
+                  <Text style={styles.stylist}> {`${t('Total')}`}</Text>
+                  <Text style={[styles.stylist, styles.stylelistName]}>
+                    {salon?.service?.price.slice(0, -3) ||
+                      salon?.sub_service?.price.slice(0, -3)}{' '}
+                    QAR
                   </Text>
                 </View>
               </View>
@@ -326,7 +338,8 @@ const styles = StyleSheet.create({
     fontSize: 34,
     fontWeight: '500',
     color: '#000000',
-    marginVertical: 20,
+    marginTop: 20,
+    marginBottom: 5,
   },
   listContainer: {
     marginVertical: 20,
@@ -337,9 +350,9 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   listTitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '400',
-    color: '#000000',
+    color: Colors.black2,
     marginBottom: 5,
   },
   date: {
@@ -350,18 +363,28 @@ const styles = StyleSheet.create({
   time: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#000000',
+    color: Colors.black3,
+  },
+  intoList: {
+    paddingLeft: 10,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   stylist: {
-    fontSize: 17,
-    fontWeight: '300',
-    color: 'rgba(27, 31, 38, 0.72)',
-    marginTop: 15,
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.black3,
+  },
+  stylelistName: {
+    fontSize: 15,
+    color: Colors.black1,
   },
   service: {
     fontSize: 13,
     fontWeight: '500',
-    color: 'rgba(27, 31, 38, 0.72)',
+    color: 'rgba(12, 94, 236, 0.72)',
   },
   price: {
     fontSize: 13,
@@ -416,8 +439,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 65,
-    marginBottom: 15,
+    marginBottom: 20,
     flexDirection: 'row',
   },
   title3: {

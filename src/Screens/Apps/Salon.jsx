@@ -1,6 +1,6 @@
 /* eslint-disable react-native/no-inline-styles */
 /* RTL Responsive Version of the Salon Screen */
-import React, { useContext, useEffect, useState } from 'react';
+import React, {useContext, useEffect, useState} from 'react';
 import {
   Image,
   ScrollView,
@@ -13,11 +13,11 @@ import {
   FlatList,
   useWindowDimensions,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import {useNavigation} from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { Colors } from '../../assets/constants';
+import {Colors} from '../../assets/constants';
 import AdSlider from '../../assets/common/adsSlider';
-import { AuthContext } from '../../context/AuthContext';
+import {AuthContext} from '../../context/AuthContext';
 import {
   deletefavorite,
   favorite,
@@ -27,16 +27,16 @@ import {
 } from '../../context/api';
 import Loading from '../../assets/common/Loading';
 import i18n from '../../assets/locales/i18';
-import { t } from 'i18next';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {t} from 'i18next';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Heart from '../../assets/icons/heart.svg';
-import { screenHeight } from '../../assets/constants/ScreenSize';
-import { SvgXml } from 'react-native-svg';
+import {screenHeight} from '../../assets/constants/ScreenSize';
+import {SvgXml} from 'react-native-svg';
 import hostImge from '../../context/hostImge';
 
-const Salon = ({ route }) => {
-  const { salonId } = route.params;
-  const { width } = useWindowDimensions();
+const Salon = ({route}) => {
+  const {salonId} = route.params;
+  const {width} = useWindowDimensions();
   const isRTL = i18n.language === 'ar';
 
   const [isHeart, setHeart] = useState(false);
@@ -44,7 +44,7 @@ const Salon = ({ route }) => {
   const [Cate, setCate] = useState([]);
   const [loading, setloading] = useState(true);
   const [auth, setAuth] = useState(false);
-  const { isAuth } = useContext(AuthContext);
+  const {isAuth} = useContext(AuthContext);
   const navigation = useNavigation();
 
   const calculateNumColumns = () => {
@@ -91,18 +91,20 @@ const Salon = ({ route }) => {
 
     fetchSalon();
     fetchCategory();
-    if (isAuth) {fetchData();}
+    if (isAuth) {
+      fetchData();
+    }
   }, [isAuth, salonId]);
 
   const handleGoBack = () => navigation.goBack();
 
   const handleService = (uuid, CatName) => {
-    navigation.navigate('Service', { salonId, uuid, CatName });
+    navigation.navigate('Service', {salonId, uuid, CatName});
   };
 
   const openMap = () => {
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-      salon?.location?.address
+      salon?.location?.address,
     )}`;
     Linking.openURL(url);
   };
@@ -126,7 +128,7 @@ const Salon = ({ route }) => {
   };
 
   // eslint-disable-next-line react/no-unstable-nested-components
-  const SvgImage = ({ imageUrl }) => {
+  const SvgImage = ({imageUrl}) => {
     const [svgData, setSvgData] = useState('');
 
     useEffect(() => {
@@ -140,14 +142,17 @@ const Salon = ({ route }) => {
         }
       };
 
-      if (imageUrl) {fetchSvgData();}
+      if (imageUrl) {
+        fetchSvgData();
+      }
     }, [imageUrl]);
 
     return svgData ? <SvgXml xml={svgData} width="80" height="80" /> : null;
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { writingDirection: isRTL ? 'rtl' : 'ltr' }]}>
+    <SafeAreaView
+      style={[styles.safeArea, {writingDirection: isRTL ? 'rtl' : 'ltr'}]}>
       <View style={styles.header}>
         <Ionicons
           name={isRTL ? 'arrow-forward' : 'arrow-back'}
@@ -163,7 +168,9 @@ const Salon = ({ route }) => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}>
         {loading ? (
           <Loading />
         ) : (
@@ -171,20 +178,39 @@ const Salon = ({ route }) => {
             <View>
               <View style={[styles.salonInfo]}>
                 <Image
-                  source={{ uri: `${hostImge}${salon?.images?.logo}`}}
+                  source={{uri: `${hostImge}${salon?.images?.logo}`}}
                   style={styles.salonLogo}
                   resizeMode="cover"
                 />
                 <View style={styles.salonDetails}>
-                  <Text style={[styles.title]}> {isRTL ? salon?.name_ar : salon?.name} </Text>
-                  <Text style={[styles.description]}> {isRTL ? salon?.description_ar : salon?.description} </Text>
+                  <Text style={[styles.title]}>
+                    {' '}
+                    {isRTL ? salon?.name_ar : salon?.name}{' '}
+                  </Text>
+                  <Text style={[styles.description]}>
+                    {' '}
+                    {isRTL ? salon?.description_ar : salon?.description}{' '}
+                  </Text>
                   <View style={[styles.location]}>
-                    <Ionicons name="location" size={15} color={Colors.primary} />
-                    <Text style={styles.locationText} numberOfLines={2}> {salon?.location?.address} </Text>
+                    <Ionicons
+                      name="location"
+                      size={15}
+                      color={Colors.primary}
+                    />
+                    <Text style={styles.locationText} numberOfLines={2}>
+                      {' '}
+                      {salon?.location?.address}{' '}
+                    </Text>
                   </View>
                 </View>
               </View>
-              <View style={{ position: 'absolute', alignSelf: 'flex-end', bottom: 5, right: 15 }}>
+              <View
+                style={{
+                  position: 'absolute',
+                  alignSelf: 'flex-end',
+                  bottom: 5,
+                  right: 15,
+                }}>
                 <TouchableOpacity style={styles.mapButton} onPress={openMap}>
                   <Text style={styles.mapButtonText}>{t('Google Map')}</Text>
                 </TouchableOpacity>
@@ -196,21 +222,37 @@ const Salon = ({ route }) => {
                 <AdSlider paidAds={salon?.banners} />
               </View>
             ) : (
-              <View style={{ borderWidth: 1, borderColor: Colors.border, height: 0, width: '90%', marginVertical: 15, alignSelf: 'center' }} />
+              <View
+                style={{
+                  borderWidth: 1,
+                  borderColor: Colors.border,
+                  height: 0,
+                  width: '90%',
+                  marginVertical: 15,
+                  alignSelf: 'center',
+                }}
+              />
             )}
 
             <FlatList
               nestedScrollEnabled
               data={Cate}
-              renderItem={({ item }) => (
+              renderItem={({item}) => (
                 <TouchableOpacity
-                  style={[styles.categoryItem, { width: categoryItemWidth() }]}
-                  onPress={() => handleService(item.uuid, isRTL ? item.name_ar : item.name)}>
+                  style={[styles.categoryItem, {width: categoryItemWidth()}]}
+                  onPress={() =>
+                    handleService(item.uuid, isRTL ? item.name_ar : item.name)
+                  }>
                   <SvgImage imageUrl={item?.image} />
-                  <Text style={[styles.categoryTitle, { textAlign: 'center' }]}> {isRTL ? item.name_ar : item.name} </Text>
+                  <Text style={[styles.categoryTitle, {textAlign: 'center'}]}>
+                    {' '}
+                    {isRTL ? item.name_ar : item.name}{' '}
+                  </Text>
                 </TouchableOpacity>
               )}
-              keyExtractor={item => item?.id?.toString() || Math.random().toString()}
+              keyExtractor={item =>
+                item?.id?.toString() || Math.random().toString()
+              }
               numColumns={calculateNumColumns()}
               key={calculateNumColumns()}
               contentContainerStyle={styles.categoriesContainer}
@@ -218,12 +260,18 @@ const Salon = ({ route }) => {
             />
 
             {auth && (
-              <Pressable style={styles.modalContainer} onPress={() => setAuth(false)}>
+              <Pressable
+                style={styles.modalContainer}
+                onPress={() => setAuth(false)}>
                 <View style={styles.modalContent}>
-                  <Text style={styles.modalTitle}>{t('You should log in to add to favorites')}</Text>
+                  <Text style={styles.modalTitle}>
+                    {t('You should log in to add to favorites')}
+                  </Text>
                   <TouchableOpacity
                     style={styles.loginButton}
-                    onPress={() => navigation.navigate('Auth', { screen: 'LoginOrSignup' })}>
+                    onPress={() =>
+                      navigation.navigate('Auth', {screen: 'LoginOrSignup'})
+                    }>
                     <Text style={styles.loginButtonText}>{t('Login')}</Text>
                   </TouchableOpacity>
                 </View>

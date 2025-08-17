@@ -225,7 +225,7 @@ const Profile = () => {
               <Loading />
             ) : (
               <View style={styles.header}>
-                <View style={{flexDirection: 'row'}}>
+                <View style={{flexDirection: 'row', gap: 8}}>
                   <Text style={styles.title2}>{userInfo?.name}</Text>
                   <FontAwesome
                     name="pencil"
@@ -235,7 +235,10 @@ const Profile = () => {
                   />
                 </View>
                 <Text style={{fontSize: 10, color: Colors.primary}}>
-                  {userInfo?.phone_number}
+                  {userInfo?.phone_number.slice(
+                    4,
+                    userInfo?.phone_number.length,
+                  )}
                 </Text>
               </View>
             )}
@@ -243,7 +246,9 @@ const Profile = () => {
         )}
         <View style={styles.body}>
           <View style={{marginBottom: 25}}>
-            <Text style={[styles.title3,{alignSelf: 'flex-start'}]}>{t('My Account')}</Text>
+            <Text style={[styles.title3, {alignSelf: 'flex-start'}]}>
+              {t('My Account')}
+            </Text>
             <TouchableOpacity
               style={[styles.row, {justifyContent: 'space-between'}]}
               onPress={() => setLangModal(true)}>
@@ -536,7 +541,7 @@ const Profile = () => {
                   }}
                   onPress={Edit}>
                   <Text style={[styles.modalTitle, {color: '#fff'}]}>
-                    {t('Edit')}
+                    {t('Confirm')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -580,11 +585,12 @@ const styles = StyleSheet.create({
   },
   body: {
     marginTop: 25,
-    margin: 20
+    margin: 20,
   },
   row: {
-    flexDirection:  'row',
+    flexDirection: 'row',
     marginTop: 15,
+    gap: 8,
   },
   text: {
     fontSize: 16,
@@ -606,7 +612,7 @@ const styles = StyleSheet.create({
     height: 250,
   },
   modalHeader: {
-    flexDirection:  'row',
+    flexDirection: 'row',
     justifyContent: 'space-between',
   },
   modalTitle: {
@@ -619,7 +625,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   langButton: {
-    flexDirection:  'row',
+    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     height: 50,

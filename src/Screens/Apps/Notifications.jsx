@@ -13,6 +13,7 @@ import {
   Image,
   // Pressable,
   SafeAreaView,
+  Alert,
 } from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import {
@@ -128,12 +129,17 @@ const Notifications = () => {
       setLoadingMore(false);
     }
   };
-
   const renderItem = ({item}) => {
-    const envelopeIcon = item?.is_read ? 'envelope-open' : 'envelope';
-
+    const isRead = !!item?.is_read;
+    const envelopeIcon = isRead ? 'envelope-open' : 'envelope';
+    const rowHighlight = isRead ? '#FFFFFF' : '#eef8ffff';
+    const badgeBg = isRead ? '#E0E0E0' : '#D0EEFF';
+    const badgeSize = 26;
+    const iconColor = isRead ? Colors.primary : '#FFFFFF';
     return (
-      <TouchableOpacity style={styles.row} onPress={() => handleView(item)}>
+      <TouchableOpacity
+        style={[styles.row, {backgroundColor: rowHighlight}]}
+        onPress={() => handleView(item)}>
         <Image
           source={{
             uri: item?.project?.logo
@@ -142,35 +148,25 @@ const Notifications = () => {
           }}
           style={styles.image}
         />
-        <View>
+        <View style={{flex: 1, justifyContent: 'center'}}>
           <Text style={[styles.text, {fontWeight: '300', fontSize: 13}]}>
             {i18n.language === 'en' ? item?.title : item?.title_ar}
           </Text>
-          <Text style={styles.details}>
-            {(i18n.language === 'en' ? item?.body : item?.body_ar)
-              .split(' ')
-              .slice(0, 5)
-              .join(' ')}
-            {i18n.language === 'en' ? ' ...' : ''}
+          <Text style={styles.details} numberOfLines={3} ellipsizeMode="tail">
+            {i18n.language === 'en' ? item?.body : item?.body_ar}
           </Text>
         </View>
-        <View
-          style={{
-            width: 50,
-            height: 50,
-            alignItems: 'center',
-            marginTop: 10,
-          }}>
+        <View style={{width: 70, alignItems: 'center', marginTop: 10}}>
           <View
             style={{
-              width: 26,
-              height: 26,
-              backgroundColor: Colors.primary,
+              width: badgeSize,
+              height: badgeSize,
+              backgroundColor: badgeBg,
               alignItems: 'center',
               justifyContent: 'center',
-              borderRadius: 50,
+              borderRadius: badgeSize / 2,
             }}>
-            <FontAwesome name={envelopeIcon} size={14} color={'#fff'} />
+            <FontAwesome name={envelopeIcon} size={14} color={iconColor} />
           </View>
           <Text style={styles.time}>
             {new Date(item?.created_at)?.toLocaleTimeString([], {
@@ -241,7 +237,6 @@ const Notifications = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
     backgroundColor: '#fff',
     direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
@@ -255,27 +250,22 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 14,
     fontWeight: '600',
-    marginLeft: i18n.language === 'ar' ? 0 : 15,
-    marginRight: i18n.language === 'ar' ? 15 : 0,
     color: '#000',
     // backgroundColor: '#000',
     // width: 185,
   },
   row: {
     width: '100%',
-    height: 60,
-    padding: 10,
+    height: 80,
+    padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 5,
-    borderRadius: 10,
+    gap: 10,
     justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderColor: Colors.border,
   },
   image: {
-    width: 35,
-    height: 35,
+    width: 45,
+    height: 45,
     borderRadius: 50,
     backgroundColor: Colors.primary,
   },
