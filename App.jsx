@@ -1,131 +1,95 @@
 /* eslint-disable react-native/no-inline-styles */
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, {useEffect} from 'react';
+import {I18nManager, StatusBar, View, Text, StyleSheet} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import {createStackNavigator} from '@react-navigation/stack';
 import {AuthProvider} from './src/context/AuthContext';
-import {NetworkProvider} from './src/assets/common/NetworkStatus';
-import i18n from './src/assets/locales/i18';
+import {NetworkProvider, useNetwork} from './src/assets/common/NetworkStatus';
+import i18n, {i18n as i18ne} from './src/assets/locales/i18';
+import {I18nextProvider, t} from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {I18nextProvider, useTranslation} from 'react-i18next';
 import NotificationHandler from './src/assets/common/NotificationHandler';
-import {
-  I18nManager,
-  StatusBar,
-  Text,
-  Platform,
-  DevSettings,
-  SafeAreaView,
-} from 'react-native';
 import SystemNavigationBar from 'react-native-system-navigation-bar';
-import {useNetwork} from './src/assets/common/NetworkStatus';
+import Orientation from 'react-native-orientation-locker';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import {Colors} from './src/assets/constants';
-import Orientation from 'react-native-orientation-locker';
-import Splash from './src/Screens/Splash';
+import {enableScreens} from 'react-native-screens';
 
+import Splash from './src/Screens/Splash';
+import Splash2 from './src/Screens/Splash2';
+import Auth from './src/navigation/Auth';
+import AppN from './src/navigation/AppN';
+
+// Enable react-native-screens for better navigation performance
+enableScreens();
+
+// Stack navigator
 const Stack = createStackNavigator();
 
-const MainNavigator = React.memo(() => {
+// Main navigator stack
+const MainNavigator = () => {
   return (
     <Stack.Navigator screenOptions={{headerShown: false}}>
       <Stack.Screen name="Splash" component={Splash} />
-      <Stack.Screen
-        name="Splash2"
-        getComponent={() => require('./src/Screens/Splash2').default}
-      />
-      <Stack.Screen
-        name="Auth"
-        getComponent={() => require('./src/navigation/Auth').default}
-      />
-      <Stack.Screen
-        name="App"
-        getComponent={() => require('./src/navigation/AppN').default}
-      />
+      <Stack.Screen name="Splash2" component={Splash2} />
+      <Stack.Screen name="Auth" component={Auth} />
+      <Stack.Screen name="App" component={AppN} />
     </Stack.Navigator>
   );
-});
-const NoInternetScreen = React.memo(() => {
-  const {t} = useTranslation();
-  return (
-    <SafeAreaView
-      style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
-      <MaterialIcons name="wifi-off" color={Colors.primary} size={70} />
-      <Text style={{fontSize: 18, fontWeight: 'bold', color: Colors.primary}}>
-        {t('No internet connection')}
-      </Text>
-    </SafeAreaView>
-  );
-});
-const AppContent = React.memo(() => {
+};
+
+// No internet screen memoized to prevent unnecessary re-renders
+const NoInternetScreen = React.memo(() => (
+  <View style={styles.noInternetContainer}>
+    <MaterialIcons name="wifi-off" color={Colors.primary} size={70} />
+    <Text style={styles.noInternetText}>{t('No internet connection')}</Text>
+  </View>
+));
+
+// Optional overlay for network status (non-blocking)
+const NoInternetOverlay = React.memo(() => (
+  <View style={styles.overlayContainer}>
+    <MaterialIcons name="wifi-off" color="#fff" size={24} />
+    <Text style={styles.overlayText}>{t('No internet connection')}</Text>
+  </View>
+));
+
+// App content with navigation
+const AppContent = () => {
   const isConnected = useNetwork();
 
   return (
     <NavigationContainer>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <NotificationHandler />
-      {isConnected ? <MainNavigator /> : <NoInternetScreen />}
+      <MainNavigator />
+      {!isConnected && <NoInternetOverlay />}
     </NavigationContainer>
   );
-});
+};
+
+// Root app
 const App = () => {
-  const [isReady, setIsReady] = useState(false);
-  const reloadedRef = useRef(false);
-  const fetchLanguageAndApply = useCallback(async () => {
-    try {
+  // Combine all startup effects into a single effect
+  useEffect(() => {
+    // Lock orientation
+    Orientation.lockToPortrait();
+
+    // Hide system navigation bar
+    SystemNavigationBar.navigationHide();
+
+    // Fetch stored language and set RTL if needed
+    (async () => {
       const storedLang = await AsyncStorage.getItem('language');
       if (storedLang) {
-        if (i18n.language !== storedLang) {
-          await i18n.changeLanguage(storedLang);
-        }
-        const shouldRTL = storedLang === 'ar' || storedLang === 'he' || storedLang === 'fa';
-        if (I18nManager.isRTL !== shouldRTL) {
-          I18nManager.forceRTL(shouldRTL);
-          if (!reloadedRef.current) {
-            reloadedRef.current = true;
-            setTimeout(() => {
-              try {
-                DevSettings.reload();
-              } catch (e) {
-              }
-            }, 450);
-            return; 
-          }
-        }
+        i18n.changeLanguage(storedLang);
+        I18nManager.forceRTL(storedLang === 'ar');
       }
-    } catch (e) {
-    }
+    })();
   }, []);
-
-  const prepare = useCallback(async () => {
-    try {
-      Orientation.lockToPortrait();
-    } catch (e) {
-      // ignore
-    }
-
-    try {
-      if (Platform.OS === 'android' && SystemNavigationBar?.navigationHide) {
-        SystemNavigationBar.navigationHide();
-      }
-    } catch (e) {
-      // ignore
-    }
-
-    await fetchLanguageAndApply();
-
-    setIsReady(true);
-  }, [fetchLanguageAndApply]);
-
-  useEffect(() => {
-    prepare();
-  }, []);
-
-  if (!isReady) {
-    return <Splash />;
-  }
 
   return (
-    <I18nextProvider i18n={i18n}>
+    <I18nextProvider i18n={i18ne}>
       <AuthProvider>
         <NetworkProvider>
           <AppContent />
@@ -135,5 +99,36 @@ const App = () => {
   );
 };
 
-export default App;
+// Styles moved to StyleSheet for performance
+const styles = StyleSheet.create({
+  noInternetContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  noInternetText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginTop: 10,
+  },
+  overlayContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.primary,
+    padding: 10,
+    alignItems: 'center',
+    zIndex: 999,
+    flexDirection: 'row',
+  },
+  overlayText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+});
 
+export default App;

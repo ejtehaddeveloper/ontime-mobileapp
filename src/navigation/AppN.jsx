@@ -25,6 +25,7 @@ import {GetNotifications} from '../context/api';
 import {AuthContext} from '../context/AuthContext';
 import {t} from 'i18next';
 import i18n from '../assets/locales/i18';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -57,13 +58,16 @@ function MainTabNavigator() {
     }
   }, [isAuth]);
 
+  // Get bottom safe area inset using react-native-safe-area-context
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
           backgroundColor: '#fff',
-          height: 60,
+          height: 70 + insets.bottom,
           paddingHorizontal: Platform.OS === 'ios' ? 29 : 15,
         },
       }}>

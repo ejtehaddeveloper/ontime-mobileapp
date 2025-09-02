@@ -1,5 +1,5 @@
 /* eslint-disable react-native/no-inline-styles */
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useCallback, useMemo} from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,14 +8,16 @@ import {
   TextInput,
   TouchableOpacity,
   Modal,
-  Image,
-  ScrollView,
-  Pressable,
   useWindowDimensions,
   SafeAreaView,
   I18nManager,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import FastImage from 'react-native-fast-image';
+import hostImge from '../../context/hostImge';
 import {Colors} from '../../assets/constants';
 import {useNavigation} from '@react-navigation/native';
 import Loading from '../../assets/common/Loading';
@@ -28,44 +30,187 @@ import {
 } from '../../context/api';
 import {t} from 'i18next';
 import i18n from '../../assets/locales/i18';
-import hostImge from '../../context/hostImge';
-const isRTL = i18n.language === 'ar';
-I18nManager.forceRTL(isRTL);
+import {SearchBar, SalonGridItem} from '../../components/home/index';
+
+const isRTLglobal = i18n.language === 'ar';
+I18nManager.forceRTL(isRTLglobal);
 
 const View_all = () => {
   const navigation = useNavigation();
   const {width, height} = useWindowDimensions();
 
-  const searchBarWidth = width * 0.78;
+  // Layout constants
   const numColumns = 3;
+  const sidePadding = 20;
+  const itemMargin = 15;
+  const itemWidth = useMemo(
+    () =>
+      Math.floor(
+        (width - sidePadding * 2 - itemMargin * (numColumns - 1)) / numColumns,
+      ),
+    [width],
+  );
+  const searchBarWidth = Math.min(width * 0.8, 450);
 
+  // UI & filter state
   const [isFilterVisible, setFilterVisible] = useState(false);
-  const [filter, setFilter] = useState(false);
+  const [filterActive, setFilterActive] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [Services, setServices] = useState([]);
-  //
-  const [search, setSearch] = useState('');
-  const [max, setMax] = useState(null);
-  const [min, setMin] = useState(null);
-  const [service, setService] = useState([]);
-  const [address, setAddress] = useState([]);
-  const [salons, setSalons] = useState([]);
-  const [SarFind, setSarFind] = useState([]);
-  const [loading, setloading] = useState(true);
   const [selectedOptions, setSelectedOptions] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const isRTL = i18n.language === 'ar';
+  const [min, setMin] = useState(null);
+  const [max, setMax] = useState(null);
 
-  const [is_popular, setIs_popular] = useState(false);
-  const [price_sort, setprice_sort] = useState(null);
-  const [filteredProducts, setfilteredProducts] = useState(null);
-  const [isServices, setisServices] = useState(null);
+  // Data lists & loading
+  const [serviceList, setServiceList] = useState([]);
+  const [addressList, setAddressList] = useState([]);
+  const [salons, setSalons] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
+  // Search input
+  const [search, setSearch] = useState('');
+
+  // Derived filter params
+  const [is_popular, setIs_popular] = useState(null);
+  const [price_sort, setprice_sort] = useState(null);
+  const [isServices, setisServices] = useState(null);
+
+  const sortingOptions = useMemo(
+    () => [
+      {id: 1, label: 'Most Popular', label2: t('Most Popular')},
+      {id: 2, label: 'Customer Review', label2: t('Customer Review')},
+      {
+        id: 3,
+        label: 'Cost Low to High',
+        label2: t('Cost Low to High'),
+        exclusive: true,
+      },
+      {
+        id: 4,
+        label: 'Cost High to Low',
+        label2: t('Cost High to Low'),
+        exclusive: true,
+      },
+    ],
+    [],
+  );
+
+  // ------------------ Helpers (self-contained) ------------------
+  const buildImageUri = (host, logoPath) => {
+    if (!logoPath) return null;
+    const path = String(logoPath);
+    if (/^https?:\/\//i.test(path)) return path;
+    if (!host) return path;
+    return `${host.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
+  };
+
+  const preloadImages = (items = [], {limit = 30} = {}) => {
+    try {
+      if (!Array.isArray(items) || items.length === 0) return;
+      const sources = items
+        .map(it =>
+          buildImageUri(hostImge, it?.images?.logo || it?.logo || it?.image),
+        )
+        .filter(Boolean)
+        .slice(0, limit)
+        .map(uri => ({uri, priority: FastImage.priority.normal}));
+      if (sources.length) FastImage.preload(sources);
+    } catch (err) {
+      console.warn('preloadImages error', err);
+    }
+  };
+
+  // ------------------ Data fetching ------------------
+  const fetchPage = useCallback(async (page = 1) => {
+    setLoading(true);
+    try {
+      const Data = await getViewAll(page);
+      const pageData = Data?.data || [];
+      setSalons(pageData);
+      setTotalPages(Data?.pagination?.last_page || 1);
+
+      // Preload thumbnails for first visible rows
+      preloadImages(pageData, {limit: 30});
+    } catch (err) {
+      console.log('getViewAll error', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPage(currentPage);
+  }, [fetchPage, currentPage]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchServices = async () => {
+      try {
+        const Data = await getFilterService();
+        if (!mounted) return;
+        setServiceList(Data || []);
+      } catch (err) {
+        console.log('getFilterService error', err);
+      }
+    };
+
+    const fetchAddresses = async () => {
+      try {
+        const Data = await getAddress();
+        if (!mounted) return;
+        setAddressList(Data || []);
+      } catch (err) {
+        console.log('getAddress error', err);
+      }
+    };
+
+    fetchServices();
+    fetchAddresses();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // ------------------ Search (debounced) ------------------
+  useEffect(() => {
+    let mounted = true;
+    if (!search || search.length === 0) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    const id = setTimeout(async () => {
+      try {
+        const data = await getSearch(search);
+        if (!mounted) return;
+        setSearchResults(data || []);
+        preloadImages(data || [], {limit: 30});
+      } catch (err) {
+        console.log('search error', err);
+      } finally {
+        if (mounted) setIsSearching(false);
+      }
+    }, 450);
+
+    return () => {
+      mounted = false;
+      clearTimeout(id);
+    };
+  }, [search]);
+
+  // ------------------ Filters derived ------------------
   useEffect(() => {
     setIs_popular(selectedOptions.includes(1) ? true : null);
-
     setisServices(Services.length > 0 ? Services.join(',') : null);
 
     if (selectedOptions.includes(3) && !selectedOptions.includes(4)) {
@@ -77,227 +222,7 @@ const View_all = () => {
     }
   }, [selectedOptions, Services]);
 
-  //
-
-  const Salon = salons;
-  const filterD = address;
-  const filteredData = SarFind;
-
-  const sortingOptions = [
-    {id: 1, label: 'Most Popular', label2: t('Most Popular')},
-    {id: 2, label: 'Customer Review', label2: t('Customer Review')},
-    {
-      id: 3,
-      label: 'Cost Low to High',
-      label2: t('Cost Low to High'),
-      exclusive: true,
-    },
-    {
-      id: 4,
-      label: 'Cost High to Low',
-      label2: t('Cost High to Low'),
-      exclusive: true,
-    },
-  ];
-
-  const handleGoSalon = salonId => {
-    navigation.navigate('Salon', {salonId});
-  };
-
-  const fetchData = async (page = 1) => {
-    console.log('iiiiiiiiihhhhhhhhhhhh');
-    setloading(true);
-    try {
-      const Data = await getViewAll(page);
-      // if (Data && Data.data) {
-      setSalons(Data?.data);
-      setTotalPages(Data?.pagination?.last_page);
-      console.log('iiiiiiiiiiiiiiiiiiiiii', Data?.pagination?.last_page);
-      // }
-    } catch (error) {
-      console.log('Error fetching data:', error);
-    } finally {
-      setloading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (currentPage) {
-      fetchData(currentPage);
-    }
-  }, [currentPage]);
-
-  useEffect(() => {
-    const fetchservices = async () => {
-      try {
-        const Data = await getFilterService();
-        setService(Data);
-      } catch (error) {
-        console.log('Error fetching data getFilterService:', error);
-      } finally {
-        setloading(false);
-      }
-    };
-
-    fetchservices();
-    const fetchaddress = async () => {
-      try {
-        const Data = await getAddress();
-        setAddress(Data);
-      } catch (error) {
-        console.log('Error fetching data getAddress:', error);
-      } finally {
-        setloading(false);
-      }
-    };
-
-    fetchaddress();
-  }, []);
-
-  const renderAddress = ({item}) => {
-    const isSelected = selectedLocation === item.id;
-
-    return (
-      <TouchableOpacity
-        style={[styles.chip, isSelected && styles.selectedChip]}
-        onPress={() => handleFilter(item.id)}>
-        <Text style={[styles.chipText, isSelected && styles.selectedText]}>
-          <Ionicons
-            name="location"
-            color={isSelected ? 'white' : Colors.black3}
-            size={20}
-          />
-          {isRTL ? item.city_ar : item.city}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
-
-  const handleFilter = location => {
-    setSelectedLocation(location === selectedLocation ? null : location);
-  };
-
-  const renderService = ({item}) => {
-    const isSelected = Array.isArray(Services) && Services.includes(item.id);
-
-    return (
-      <TouchableOpacity
-        style={[
-          styles.item,
-          {
-            backgroundColor: isSelected ? Colors.primary : 'white',
-            borderColor: Colors.primary,
-            flex: 1,
-            minWidth: width / 4,
-            maxWidth: width / 3,
-            marginHorizontal: 4,
-          },
-        ]}
-        onPress={() => handleService(item.id)}>
-        <Text
-          style={[
-            styles.itemText,
-            {color: isSelected ? 'white' : Colors.black3},
-            {fontSize: width < 360 ? 12 : 16},
-          ]}>
-          {isRTL ? item.service_ar : item.service}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
-
-  const handleService = serves => {
-    setServices(prevSelected => {
-      if (prevSelected.includes(serves)) {
-        return prevSelected.filter(item => item !== serves);
-      } else {
-        return [...prevSelected, serves];
-      }
-    });
-  };
-
-  const fetchSearch = async () => {
-    if (search.length === 0) {
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const data = await getSearch(search);
-      setSarFind(data);
-    } catch (error) {
-      console.log('Error fetching search data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      fetchSearch();
-    }, 500);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
-
-  const openFilter = () => {
-    setFilterVisible(true);
-    setFilter(false);
-  };
-
-  const toggleSelection = option => {
-    let updatedSelection;
-
-    if (option.exclusive) {
-      updatedSelection = selectedOptions.includes(option.id)
-        ? selectedOptions.filter(id => id !== option.id)
-        : [
-            ...selectedOptions.filter(
-              id => !sortingOptions.find(o => o.exclusive && o.id === id),
-            ),
-            option.id,
-          ];
-    } else {
-      updatedSelection = selectedOptions.includes(option.id)
-        ? selectedOptions.filter(id => id !== option.id)
-        : [...selectedOptions, option.id];
-    }
-
-    setSelectedOptions(updatedSelection);
-  };
-
-  const renderItem = ({item}) => {
-    const itemWidth = width < 360 ? width * 0.3 : width / numColumns - 40;
-
-    return (
-      <TouchableOpacity
-        style={{
-          width: 120,
-          height: itemWidth + 20,
-          marginBottom: 20,
-          alignItems: 'center',
-          padding: 5,
-        }}
-        onPress={() => handleGoSalon(item.id)}>
-        <Image
-          source={{uri: `${hostImge}${item?.images?.logo}`}}
-          style={{
-            width: Math.min(itemWidth - 10, 72),
-            height: Math.min(itemWidth - 10, 72),
-            borderRadius: 50,
-          }}
-          resizeMode="cover"
-        />
-        <Text style={[styles.name, {textAlign: 'center', marginTop: 8}]}>
-          {i18n.language === 'ar' ? item?.name_ar : item?.name}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
-
-  const handleCloseFilter = async () => {
+  const handleCloseFilter = useCallback(async () => {
     if (
       selectedLocation !== null ||
       Services.length !== 0 ||
@@ -314,557 +239,564 @@ const View_all = () => {
           max,
           is_popular,
         );
-        if (Data) {
-          setfilteredProducts(Data);
-        }
-      } catch (error) {
-        console.log('Error fetching data:', error);
+        setFilteredProducts(Data || []);
+        setFilterActive(true);
+        preloadImages(Data || [], {limit: 30});
+      } catch (err) {
+        console.log('getFilter error', err);
+      } finally {
+        setFilterVisible(false);
       }
-      setFilter(true);
-      setFilterVisible(false);
     } else {
-      setFilter(false);
+      setFilterActive(false);
+      setFilterVisible(false);
     }
-  };
+  }, [
+    Services,
+    selectedLocation,
+    selectedOptions,
+    min,
+    max,
+    isServices,
+    price_sort,
+    is_popular,
+  ]);
 
-  const resetFilters = () => {
+  const resetFilters = useCallback(() => {
     setSelectedLocation(null);
     setServices([]);
     setSelectedOptions([]);
     setMin(null);
     setMax(null);
-    setFilter(false);
-    setfilteredProducts(null);
+    setFilterActive(false);
+    setFilteredProducts([]);
     setFilterVisible(false);
-  };
+  }, []);
 
-  const handleGoBack = () => navigation.goBack();
+  // ------------------ Handlers ------------------
+  const handleFilterToggleLocation = useCallback(location => {
+    setSelectedLocation(prev => (prev === location ? null : location));
+  }, []);
 
-  console.log('hhhhhhhhhhhhhhhhhhhhhhhhh', isRTL);
+  const handleToggleService = useCallback(s => {
+    setServices(prev =>
+      prev.includes(s) ? prev.filter(i => i !== s) : [...prev, s],
+    );
+  }, []);
+
+  const toggleSelection = useCallback(
+    option => {
+      setSelectedOptions(prev =>
+        option.exclusive
+          ? prev.includes(option.id)
+            ? prev.filter(id => id !== option.id)
+            : [
+                ...prev.filter(
+                  id => !sortingOptions.find(o => o.exclusive && o.id === id),
+                ),
+                option.id,
+              ]
+          : prev.includes(option.id)
+          ? prev.filter(id => id !== option.id)
+          : [...prev, option.id],
+      );
+    },
+    [sortingOptions],
+  );
+
+  const handleGoSalon = useCallback(
+    salonId => navigation.navigate('Salon', {salonId}),
+    [navigation],
+  );
+  const handleGoBack = useCallback(() => navigation.goBack(), [navigation]);
+
+  // ------------------ Renderers ------------------
+  const renderSalonItem = useCallback(
+    ({item}) => (
+      <SalonGridItem
+        item={item}
+        size={itemWidth}
+        onPress={handleGoSalon}
+        isRTL={isRTLglobal}
+      />
+    ),
+    [itemWidth, handleGoSalon],
+  );
+
+  const salonKeyExtractor = useCallback(item => String(item.id), []);
+
+  // Header for the main list
+  const HomeListHeader = useMemo(() => {
+    return (
+      <View>
+        <View style={{padding: 16}}>
+          <View style={styles.headerSubSection}>
+            <Text style={styles.welcome}>{t('Salons')}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }, []);
+
+  // Active list selection (only one large vertical FlatList mounted at a time)
+  const ActiveList = useMemo(() => {
+    // Searching
+    if (search && search.length > 0) {
+      if (isSearching) return <Loading />;
+      if (!searchResults || searchResults.length === 0)
+        return (
+          <View style={styles.noResultContainer}>
+            <Text>{t('No result found!')}</Text>
+          </View>
+        );
+
+      return (
+        <FlatList
+          style={{flex: 1}}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          data={searchResults}
+          renderItem={renderSalonItem}
+          keyExtractor={salonKeyExtractor}
+          numColumns={numColumns}
+          contentContainerStyle={{
+            padding: 15,
+            alignItems: width < 480 ? 'center' : 'flex-start',
+          }}
+          columnWrapperStyle={{justifyContent: 'flex-start'}}
+        />
+      );
+    }
+
+    // Filters active
+    if (filterActive) {
+      if (!filteredProducts || filteredProducts.length === 0)
+        return (
+          <View style={styles.noResultContainer}>
+            <Text>{t('No result found!')}</Text>
+          </View>
+        );
+
+      return (
+        <FlatList
+          style={{flex: 1}}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          data={filteredProducts}
+          renderItem={renderSalonItem}
+          keyExtractor={salonKeyExtractor}
+          numColumns={numColumns}
+          contentContainerStyle={{
+            padding: 15,
+            alignItems: width < 480 ? 'center' : 'flex-start',
+          }}
+          columnWrapperStyle={{justifyContent: 'flex-start'}}
+        />
+      );
+    }
+
+    // Default: paginated main list
+    return (
+      <FlatList
+        style={{flex: 1}}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        data={salons}
+        renderItem={renderSalonItem}
+        keyExtractor={salonKeyExtractor}
+        numColumns={numColumns}
+        contentContainerStyle={{paddingBottom: 40, paddingHorizontal: 10}}
+        columnWrapperStyle={{justifyContent: 'center'}}
+        ListHeaderComponent={HomeListHeader}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={11}
+        removeClippedSubviews={true}
+      />
+    );
+  }, [
+    search,
+    isSearching,
+    searchResults,
+    filterActive,
+    filteredProducts,
+    salons,
+    renderSalonItem,
+    salonKeyExtractor,
+    HomeListHeader,
+    width,
+  ]);
+
+  // ------------------ Render ------------------
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Loading />
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
-      <ScrollView
-        style={styles.container}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag">
-        {loading ? (
-          <Loading />
-        ) : (
-          <>
-            {!isFilterVisible && (
-              <View
-                style={{
-                  padding: 16,
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexDirection: isRTL ? 'row-reverse' : 'row',
-                }}>
-                <Ionicons
-                  name={i18n.language === 'en' ? 'arrow-back' : 'arrow-forward'}
-                  size={25}
-                  onPress={handleGoBack}
-                />
-              </View>
-            )}
-            <View>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  paddingLeft: 16,
-                  paddingRight: 16,
-                  flexWrap: 'wrap',
-                  direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
-                }}>
-                <View style={[styles.searchBar, {width: searchBarWidth}]}>
-                  <Ionicons
-                    name="search-outline"
-                    size={18}
-                    color={Colors.primary}
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={{flex: 1}}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* Fixed header row: back button + search */}
+        <View style={styles.fixedHeader}>
+          <View
+            style={[
+              styles.topRow,
+              {flexDirection: isRTLglobal ? 'row-reverse' : 'row'},
+            ]}>
+            <TouchableOpacity
+              onPress={handleGoBack}
+              style={styles.backButton}
+              accessibilityRole="button">
+              <Ionicons
+                name={i18n.language === 'en' ? 'arrow-back' : 'arrow-forward'}
+                size={24}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          onOpenFilter={() => setFilterVisible(true)}
+          maxWidth={searchBarWidth}
+        />
+        {/* Active content */}
+        <View style={{flex: 1}}>{ActiveList}</View>
+
+        {/* Pagination for main list */}
+        {!search && !filterActive && totalPages > 1 && (
+          <View style={styles.paginationRow}>
+            <TouchableOpacity
+              disabled={currentPage === 1}
+              onPress={() => setCurrentPage(p => Math.max(1, p - 1))}
+              style={[
+                styles.pageButton,
+                currentPage === 1 && styles.pageButtonDisabled,
+              ]}>
+              <Ionicons
+                name={
+                  i18n.language === 'en' ? 'chevron-back' : 'chevron-forward'
+                }
+                size={22}
+                color="#fff"
+              />
+            </TouchableOpacity>
+
+            <Text style={styles.pageInfo}>
+              {currentPage} {t('of')} {totalPages}
+            </Text>
+
+            <TouchableOpacity
+              disabled={currentPage >= totalPages}
+              onPress={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              style={[
+                styles.pageButton,
+                currentPage >= totalPages && styles.pageButtonDisabled,
+              ]}>
+              <Ionicons
+                name={
+                  i18n.language === 'en' ? 'chevron-forward' : 'chevron-back'
+                }
+                size={22}
+                color="#fff"
+              />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Filter modal (75% height) */}
+        <Modal
+          visible={isFilterVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setFilterVisible(false)}>
+          <View style={styles.modalBackdrop}>
+            <TouchableOpacity
+              style={{flex: 1}}
+              activeOpacity={1}
+              onPress={() => setFilterVisible(false)}
+            />
+
+            <View
+              style={[
+                styles.modalContent,
+                {height: Math.min(height * 0.75, 720)},
+              ]}>
+              <ScrollView
+                contentContainerStyle={{padding: 20}}
+                keyboardShouldPersistTaps="handled">
+                <TouchableOpacity
+                  style={styles.clearFilter}
+                  onPress={resetFilters}>
+                  <Text style={styles.clearFilterText}>{t('Clear')}</Text>
+                </TouchableOpacity>
+
+                <Text
+                  style={[
+                    styles.title,
+                    {textAlign: isRTLglobal ? 'right' : 'left'},
+                  ]}>
+                  {t('Services')}
+                </Text>
+                <View style={styles.chipContainer}>
+                  {serviceList.map(svc => {
+                    const id = svc.uuid || svc.id;
+                    const isSelected = Services.includes(id);
+                    return (
+                      <TouchableOpacity
+                        key={id}
+                        onPress={() => handleToggleService(id)}
+                        style={[
+                          styles.chip,
+                          isSelected && styles.selectedChip,
+                        ]}>
+                        <Text
+                          style={[
+                            styles.chipText,
+                            isSelected && styles.selectedText,
+                          ]}>
+                          {isRTLglobal
+                            ? svc.name_ar || svc.service_ar
+                            : svc.name || svc.service}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text
+                  style={[
+                    styles.title,
+                    {marginTop: 16, textAlign: isRTLglobal ? 'right' : 'left'},
+                  ]}>
+                  {t('Address')}
+                </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    marginTop: 8,
+                  }}>
+                  {addressList.map(addr => {
+                    const isSelected = selectedLocation === addr.id;
+                    return (
+                      <TouchableOpacity
+                        key={addr.id}
+                        style={[styles.chip, isSelected && styles.selectedChip]}
+                        onPress={() => handleFilterToggleLocation(addr.id)}>
+                        <Text
+                          style={[
+                            styles.chipText,
+                            isSelected && styles.selectedText,
+                          ]}>
+                          <Ionicons
+                            name="location"
+                            size={14}
+                            color={isSelected ? '#fff' : Colors.black3}
+                          />{' '}
+                          {isRTLglobal ? addr.city_ar : addr.city}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View style={{paddingVertical: 20}}>
+                  <Text
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 'bold',
+                      marginBottom: 10,
+                    }}>
+                    {t('Sort By')}
+                  </Text>
+                  {sortingOptions.map(option => (
+                    <TouchableOpacity
+                      key={option.id}
+                      onPress={() => toggleSelection(option)}
+                      style={styles.sortRow}>
+                      <Text
+                        style={{
+                          fontSize: 16,
+                          fontWeight: selectedOptions.includes(option.id)
+                            ? 'bold'
+                            : 'normal',
+                        }}>
+                        {option.label2}
+                      </Text>
+                      <View style={styles.checkbox}>
+                        {selectedOptions.includes(option.id) && (
+                          <View style={styles.checkboxInner} />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text
+                  style={[
+                    styles.title,
+                    {textAlign: isRTLglobal ? 'right' : 'left'},
+                  ]}>
+                  {t('Price')}
+                </Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    marginTop: 12,
+                  }}>
+                  <TextInput
+                    placeholder={t('Min')}
+                    value={min}
+                    onChangeText={setMin}
+                    style={styles.priceInput}
+                    keyboardType="numeric"
+                    placeholderTextColor={Colors.black3}
                   />
                   <TextInput
-                    placeholder={t('Search here')}
-                    value={search}
-                    onChangeText={setSearch}
-                    style={[styles.searchText, {flex: 1}]}
-                    placeholderTextColor={Colors.primary}
+                    placeholder={t('Max')}
+                    value={max}
+                    onChangeText={setMax}
+                    style={styles.priceInput}
+                    keyboardType="numeric"
+                    placeholderTextColor={Colors.black3}
                   />
                 </View>
-                <View style={{flexDirection: 'column', alignItems: 'center'}}>
-                  <TouchableOpacity style={styles.filter} onPress={openFilter}>
-                    <Ionicons
-                      name="filter-outline"
-                      size={25}
-                      color={Colors.primary}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
 
-              <Modal
-                visible={isFilterVisible}
-                transparent={true}
-                animationType="slide">
-                <View style={styles.modalContainer}>
-                  <TouchableOpacity
-                    activeOpacity={1}
-                    style={{flex: 1}}
-                    onPress={() => setFilterVisible(false)}
-                  />
-                  <View
-                    style={[
-                      styles.modalContentWrapper,
-                      {maxHeight: height * 0.9, width: '100%'},
-                    ]}>
-                    <ScrollView
-                      contentContainerStyle={{padding: 20}}
-                      showsVerticalScrollIndicator={true}
-                      bounces={false}
-                      keyboardShouldPersistTaps="handled">
-                      <View>
-                        <TouchableOpacity
-                          style={styles.clearFilter}
-                          onPress={resetFilters}>
-                          <Text style={styles.clearFilterText}>
-                            {t('Clear')}
-                          </Text>
-                        </TouchableOpacity>
-                        <Text
-                          style={[
-                            styles.title,
-                            {textAlign: isRTL ? 'right' : 'left'},
-                          ]}>
-                          {t('Services')}
-                        </Text>
-                        <View style={styles.chipContainer}>
-                          {service.map((Service, index) => {
-                            const isSelected = Services.includes(Service.uuid);
-                            return (
-                              <TouchableOpacity
-                                key={index}
-                                onPress={() => handleService(Service.uuid)}
-                                style={[
-                                  styles.chip,
-                                  isSelected && styles.selectedChip,
-                                ]}>
-                                <Text
-                                  style={[
-                                    styles.chipText,
-                                    isSelected && styles.selectedText,
-                                  ]}>
-                                  {isRTL ? Service.name_ar : Service.name}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      </View>
-                      <View>
-                        <Text
-                          style={[
-                            styles.title,
-                            {textAlign: isRTL ? 'right' : 'left'},
-                          ]}>
-                          {t('Address')}
-                        </Text>
-                        <FlatList
-                          nestedScrollEnabled={true}
-                          data={filterD}
-                          renderItem={renderAddress}
-                          keyExtractor={item => item.id.toString()}
-                          numColumns={width < 480 ? 2 : 3}
-                          contentContainerStyle={{padding: 5}}
-                        />
-                      </View>
-                      <View style={{padding: 20}}>
-                        <Text
-                          style={{
-                            fontSize: 18,
-                            fontWeight: 'bold',
-                            marginBottom: 10,
-                          }}>
-                          {t('Sort By')}
-                        </Text>
-                        {sortingOptions.map(option => (
-                          <TouchableOpacity
-                            key={option.id}
-                            onPress={() => toggleSelection(option)}
-                            style={{
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              marginVertical: 8,
-                              justifyContent: 'space-between',
-                            }}>
-                            <Text
-                              style={{
-                                fontSize: 16,
-                                fontWeight: selectedOptions.includes(option.id)
-                                  ? 'bold'
-                                  : 'normal',
-                                color: selectedOptions.includes(option.id)
-                                  ? '#333'
-                                  : '#777',
-                              }}>
-                              {option.label2}
-                            </Text>
-                            <View
-                              style={{
-                                width: 20,
-                                height: 20,
-                                borderRadius: 5,
-                                borderWidth: 2,
-                                borderColor: '#C2A68B',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                marginRight: 10,
-                              }}>
-                              {selectedOptions.includes(option.id) && (
-                                <View
-                                  style={{
-                                    width: 12,
-                                    height: 12,
-                                    backgroundColor: '#C2A68B',
-                                    borderRadius: 3,
-                                  }}
-                                />
-                              )}
-                            </View>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                      <View>
-                        <Text
-                          style={[
-                            styles.title,
-                            {textAlign: isRTL ? 'right' : 'left'},
-                          ]}>
-                          {t('Price')}
-                        </Text>
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            justifyContent: 'space-around',
-                            marginTop: 15,
-                            width: '100%',
-                          }}>
-                          <TextInput
-                            placeholder={t('Max')}
-                            value={max}
-                            onChangeText={value => setMax(value)}
-                            style={{
-                              height: 50,
-                              width: width * 0.35,
-                              borderWidth: 1,
-                              borderRadius: 12,
-                              padding: 15,
-                            }}
-                            keyboardType="phone-pad"
-                            placeholderTextColor={Colors.black3}
-                          />
-                          <TextInput
-                            placeholder={t('Min')}
-                            value={min}
-                            onChangeText={value => setMin(value)}
-                            style={{
-                              height: 50,
-                              width: width * 0.35,
-                              borderWidth: 1,
-                              borderRadius: 12,
-                              padding: 15,
-                            }}
-                            keyboardType="phone-pad"
-                            placeholderTextColor={Colors.black3}
-                          />
-                        </View>
-                      </View>
-                      <TouchableOpacity
-                        style={[
-                          styles.button,
-                          {width: width * 0.8, marginVertical: 30},
-                        ]}
-                        onPress={handleCloseFilter}>
-                        <Text style={styles.title2}>{t('Search')}</Text>
-                      </TouchableOpacity>
-                    </ScrollView>
-                  </View>
-                </View>
-              </Modal>
-
-              {search.length > 0 && (
-                <>
-                  {isLoading ? (
-                    <Loading />
-                  ) : (
-                    <>
-                      {filteredData.length > 0 ? (
-                        <FlatList
-                          nestedScrollEnabled={true}
-                          data={filteredData}
-                          renderItem={renderItem}
-                          keyExtractor={item => item.id.toString()}
-                          numColumns={numColumns}
-                          contentContainerStyle={{
-                            padding: 15,
-                            alignItems: width < 480 ? 'center' : 'flex-start',
-                          }}
-                          key={`list-${numColumns}`}
-                        />
-                      ) : (
-                        <View
-                          style={{
-                            flex: 1,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            margin: 100,
-                          }}>
-                          <Text>{t('No result found!')}</Text>
-                        </View>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-              {filter && (
-                <FlatList
-                  nestedScrollEnabled={true}
-                  data={filteredProducts}
-                  renderItem={renderItem}
-                  keyExtractor={item => item.id.toString()}
-                  numColumns={numColumns}
-                  contentContainerStyle={{
-                    padding: 15,
-                    alignItems: width < 480 ? 'center' : 'flex-start',
-                  }}
-                  key={`filtered-${numColumns}`}
-                />
-              )}
+                <TouchableOpacity
+                  style={[styles.button, {marginTop: 28}]}
+                  onPress={handleCloseFilter}>
+                  <Text style={styles.title2}>{t('Search')}</Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
-            {search.length === 0 && !filter && (
-              <View style={{marginTop: 10, alignItems: 'center'}}>
-                <View style={{padding: 16, width: '100%'}}>
-                  <Text style={styles.welcome}>{t('Salons')}</Text>
-                  <FlatList
-                    nestedScrollEnabled={true}
-                    data={Salon}
-                    renderItem={renderItem}
-                    keyExtractor={item => item.id.toString()}
-                    numColumns={numColumns}
-                    contentContainerStyle={{
-                      padding: 5,
-                      alignItems: width < 480 ? 'center' : 'flex-start',
-                    }}
-                    key={`salon-${numColumns}`}
-                  />
-
-                  {totalPages > 1 && (
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        justifyContent: 'center',
-                        marginVertical: 20,
-                      }}>
-                      <TouchableOpacity
-                        disabled={currentPage === 1}
-                        onPress={() => {
-                          const newPage = currentPage - 1;
-                          setCurrentPage(newPage);
-                        }}
-                        style={{
-                          padding: 10,
-                          marginRight: 10,
-                          borderRadius: 12,
-                          backgroundColor:
-                            currentPage === 1 ? '#ccc' : '#C2A68B',
-                        }}>
-                        <Ionicons
-                          name={
-                            i18n.language === 'en'
-                              ? 'chevron-back'
-                              : 'chevron-forward'
-                          }
-                          size={25}
-                        />
-                      </TouchableOpacity>
-
-                      <Text style={{padding: 10, fontSize: 16}}>
-                        {currentPage} {t('of')} {totalPages}
-                      </Text>
-
-                      <TouchableOpacity
-                        disabled={currentPage >= totalPages}
-                        onPress={() => {
-                          const newPage = currentPage + 1;
-                          setCurrentPage(newPage);
-                        }}
-                        style={{
-                          padding: 10,
-                          marginLeft: 10,
-                          borderRadius: 12,
-                          backgroundColor:
-                            currentPage >= totalPages ? '#ccc' : '#C2A68B',
-                        }}>
-                        <Ionicons
-                          name={
-                            i18n.language === 'en'
-                              ? 'chevron-forward'
-                              : 'chevron-back'
-                          }
-                          size={25}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-              </View>
-            )}
-          </>
-        )}
-      </ScrollView>
+          </View>
+        </Modal>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     backgroundColor: '#fff',
-    width: '100%',
-    height: '100%',
+    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
-  title: {
-    fontSize: 18,
-    marginTop: 5,
-    fontWeight: '600',
-    // textAlign: isRTL ? 'right' : 'left',
+  fixedHeader: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fff',
   },
-  title2: {
-    fontSize: 18,
-    color: '#fff',
-    textAlign: 'center',
-  },
-  searchBar: {
-    height: 40,
-    flexDirection: isRTL ? 'row-reverse' : 'row',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.primary,
+  topRow: {alignItems: 'center', gap: 10},
+  backButton: {padding: 6},
+  headerSubSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    marginVertical: 10,
-    backgroundColor: '#fff',
   },
-  searchText: {
-    fontSize: 14,
-    color: Colors.black3,
-    marginHorizontal: 5,
-    textAlign: isRTL ? 'right' : 'left',
-    writingDirection: isRTL ? 'rtl' : 'ltr',
-  },
-  clearFilter: {
-    width: 40,
-    height: 30,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 5,
-    backgroundColor: '#fff',
-    alignSelf: 'flex-end',
-  },
-  clearFilterText: {
-    fontSize: 10,
-    color: Colors.primary,
-  },
-  filter: {
-    width: 40,
-    height: 40,
-    marginVertical: 10,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-    marginLeft: 3,
-    backgroundColor: '#fff',
-    maxWidth: 40,
-    maxHeight: 40,
-  },
+  welcome: {fontSize: 18, fontWeight: '600', marginBottom: 8},
+  title: {fontSize: 18, marginTop: 5, fontWeight: '600'},
+  title2: {fontSize: 18, color: '#fff', textAlign: 'center'},
   chipContainer: {
-    flexDirection: isRTL ? 'row-reverse' : 'row',
+    flexDirection: i18n.language === 'ar' ? 'row-reverse' : 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: isRTL ? 'flex-end' : 'flex-start',
-  },
-  chipText: {
-    color: '#000',
-    fontSize: 14,
-    textAlign: isRTL ? 'right' : 'left',
   },
   chip: {
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#c7a88a',
     backgroundColor: 'white',
-    marginRight: 8,
-    marginBottom: 8,
+    margin: 6,
   },
-  selectedChip: {
-    backgroundColor: '#c7a88a',
+  selectedChip: {backgroundColor: '#c7a88a'},
+  chipText: {color: '#000', fontSize: 14},
+  selectedText: {color: '#fff'},
+  clearFilter: {
+    width: 60,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
   },
-  welcome: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 15,
-    textAlign: isRTL ? 'right' : 'left',
-    width: '100%',
-  },
-  itemText: {
-    marginHorizontal: 5,
-    fontSize: 14,
-    textAlign: isRTL ? 'right' : 'left',
-  },
-  modalContentWrapper: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    flexGrow: 1,
-    paddingLeft: isRTL ? 20 : 10,
-    paddingRight: isRTL ? 10 : 20,
-    flexDirection: isRTL ? 'row-reverse' : 'row',
-  },
-
-  modalContainer: {
+  clearFilterText: {fontSize: 12, color: Colors.primary},
+  modalBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContentWrapper: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    flexGrow: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalContent: {
-    width: '100%',
-    maxWidth: 500,
     backgroundColor: '#fff',
-    padding: 20,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    alignSelf: 'center',
+    overflow: 'hidden',
+  },
+  sortRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#C2A68B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxInner: {
+    width: 12,
+    height: 12,
+    backgroundColor: '#C2A68B',
+    borderRadius: 3,
+  },
+  priceInput: {
+    height: 50,
+    width: '48%',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
   },
   button: {
-    height: 60,
+    height: 56,
     backgroundColor: Colors.primary,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
   },
+  noResultContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    margin: 80,
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  pageButton: {
+    padding: 10,
+    marginHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#C2A68B',
+  },
+  pageButtonDisabled: {backgroundColor: '#ccc'},
+  pageInfo: {fontSize: 16},
 });
 
 export default View_all;

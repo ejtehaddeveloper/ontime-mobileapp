@@ -26,6 +26,7 @@
     "react-native-confirmation-code-field": "^7.3.2",
     "react-native-country-codes-picker": "^2.3.5",
     "react-native-device-info": "^14.0.4",
+    "react-native-fast-image": "^8.6.3",
     "react-native-gesture-handler": "^2.21.2",
     "react-native-keyboard-controller": "^1.17.5",
     "react-native-loader-kit": "^3.0.0",

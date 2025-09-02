@@ -1,10 +1,22 @@
 /* eslint-disable react-native/no-inline-styles */
-import React, {useContext, useEffect, useState} from 'react';
+/**
+ * Refactored Cart screen
+ * - Improved performance: memoized callbacks/renderers, FlatList for services, no unnecessary re-renders
+ * - Better UX: cleaner header, consistent spacing, single unified modal for messages, optimistic deletes
+ * - More maintainable: small helpers, descriptive names, proper effect deps
+ */
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useContext,
+} from 'react';
 import {
   StyleSheet,
   Text,
   View,
-  ScrollView,
   FlatList,
   TouchableOpacity,
   Dimensions,
@@ -12,10 +24,10 @@ import {
   Pressable,
   Modal,
   SafeAreaView,
+  ActivityIndicator,
 } from 'react-native';
 import {Colors} from '../../assets/constants';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-// import salons from '../../data/salons.json';
 import {AuthContext} from '../../context/AuthContext';
 import {CommonActions, useNavigation} from '@react-navigation/native';
 import {Checkout, deleteCart, getCart} from '../../context/api';
@@ -25,519 +37,431 @@ import {screenHeight, screenWidth} from '../../assets/constants/ScreenSize';
 import {t} from 'i18next';
 
 const {width} = Dimensions.get('window');
-
 const scale = width / 375;
+const normalize = size => Math.round(scale * size);
 
-const normalize = size => {
-  return Math.round(scale * size);
-};
+const currencyLabel = i18n.language === 'ar' ? 'ر.ق' : 'QAR';
+
+const EmptyList = ({text}) => (
+  <View style={styles.emptyContainer}>
+    <Text style={styles.emptyText}>{text}</Text>
+  </View>
+);
 
 const Cart = () => {
-  // const noti = salons;
   const {isAuth} = useContext(AuthContext);
   const isRTL = i18n.language === 'ar';
-  const [isVisible4, setIsVisible4] = useState(false);
-  const [subloading, setSubloading] = useState(false);
-
-  useEffect(() => {
-    console.log('Cart changed:', cart);
-  }, [cart]);
-  console.log('Cart changed:', cart);
-
   const navigation = useNavigation();
 
-  const [cart, setcart] = useState([]);
-  const [TPrice, setTPrice] = useState([]);
-  const [loading, setloading] = useState(true);
-  const [isVisible, setIsVisible] = useState(false);
-  const [ErrorC, setErrorC] = useState('');
+  // data
+  const [cartItems, setCartItems] = useState([]);
+  const [totals, setTotals] = useState(null);
 
+  // UI state
+  const [loading, setLoading] = useState(true); // initial load
+  const [submitting, setSubmitting] = useState(false); // checkout request
+  const [messageModal, setMessageModal] = useState({
+    visible: false,
+    title: '',
+    message: '',
+  });
+
+  // fetch cart
+  const fetchCart = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await getCart();
+      if (response) {
+        // response.data expected to be array of items
+        setCartItems(Array.isArray(response.data) ? response.data : []);
+        setTotals(response);
+      } else {
+        setCartItems([]);
+        setTotals(null);
+      }
+    } catch (err) {
+      console.error('getCart error:', err);
+      setCartItems([]);
+      setTotals(null);
+      setMessageModal({
+        visible: true,
+        title: i18n.language === 'ar' ? 'خطأ' : 'Error',
+        message:
+          i18n.language === 'ar'
+            ? 'حدث خطأ أثناء جلب السلة'
+            : 'Failed to load cart.',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // require auth
   useEffect(() => {
-    if (isAuth) {
-      fetchData();
-    } else {
+    if (!isAuth) {
       navigation.navigate('Auth');
+      return;
     }
-  }, [isAuth, navigation]);
+    fetchCart();
+  }, [isAuth, fetchCart, navigation]);
 
-  const fetchData = async () => {
-    try {
-      const Data = await getCart();
-      setcart(Data.data);
-      setTPrice(Data);
-    } catch (error) {
-      console.log('Error fetching data:', error);
-    } finally {
-      setloading(false);
-    }
-  };
+  // helper: optimistic delete
+  const handleDeleteItem = useCallback(
+    async cartItemId => {
+      // optimistic update
+      setCartItems(prev => prev.filter(it => it.cart_item_id !== cartItemId));
 
-  const delete_item = async id => {
-    try {
-      const response = await deleteCart(id);
-      console.log('Delete Response:', response);
-
-      if (response) {
-        setcart(prevCart => prevCart.filter(item => item.cart_item_id !== id));
-        if (cart?.length === 1) {
-          navigation.goBack();
-        }
+      try {
+        await deleteCart(cartItemId);
+        // if last item removed, go back
+        setTimeout(() => {
+          if (cartItems.length === 1) navigation.goBack();
+        }, 100);
+      } catch (err) {
+        console.error('deleteCart error:', err);
+        // revert by re-fetching (simpler than complex undo logic)
+        fetchCart();
+        setMessageModal({
+          visible: true,
+          title: i18n.language === 'ar' ? 'خطأ' : 'Error',
+          message:
+            i18n.language === 'ar'
+              ? 'فشل حذف العنصر، حاول مرة أخرى'
+              : 'Failed to remove item. Please try again.',
+        });
       }
-    } catch (error) {
-      console.log('Cart error', error);
-    }
-  };
-
-  const handleGoBack = () => {
-    navigation.goBack();
-  };
-
-  const Done = () => {
-    setIsVisible4(false);
-    navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{name: 'App'}],
-      }),
-    );
-  };
-
-  const Confirm = async () => {
-    setSubloading(true);
-    try {
-      const response = await Checkout('cash');
-      if (response) {
-        setIsVisible4(true);
-      }
-    } catch (error) {
-      console.log('ERROR', error);
-      setErrorC(error);
-      setIsVisible(true);
-    } finally {
-      setSubloading(false);
-    }
-  };
-
-  const renderServiceItem = ({item}) => (
-    <View style={[styles.serv]}>
-      <View>
-        <Text style={styles.text}>
-          {i18n.language === 'ar'
-            ? item?.service?.name_ar
-            : item?.service?.name}
-        </Text>
-        <Text style={styles.title2}>
-          {i18n.language === 'ar'
-            ? item?.employee?.name_ar
-            : item?.employee?.name}
-        </Text>
-        <Text style={[styles.title2, {fontSize: 10}]}>
-          {item?.date.slice(5, item?.date.length)} {t('at')} {item?.start_time}
-        </Text>
-      </View>
-      <View style={{flexDirection: 'row', alignItems: 'center'}}>
-        <Text style={{}}>
-          {item?.service?.price} <Text style={{fontSize: 12}}>QAR</Text>
-        </Text>
-        <TouchableOpacity style={[styles.item, {paddingLeft: 5}]}>
-          <Ionicons
-            name="remove-circle-outline"
-            size={25}
-            color={Colors.primary}
-            onPress={() => delete_item(item?.cart_item_id)}
-          />
-        </TouchableOpacity>
-      </View>
-    </View>
+    },
+    [cartItems.length, fetchCart, navigation],
   );
 
-  return (
-    <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
-      <View style={styles.header}>
-        <Ionicons
-          name={isRTL ? 'arrow-forward' : 'arrow-back'}
-          size={25}
-          onPress={handleGoBack}
-        />
-        <Text style={styles.title}>{t('Checkout')}</Text>
-        <View />
-      </View>
-      <ScrollView style={[styles.contaner]}>
-        {loading ? (
+  // handle checkout
+  const handleConfirm = useCallback(async () => {
+    setSubmitting(true);
+    try {
+      const res = await Checkout('cash');
+      if (res) {
+        setMessageModal({
+          visible: true,
+          title: i18n.language === 'ar' ? 'نجاح' : 'Success',
+          message:
+            i18n.language === 'ar'
+              ? 'تمت عملية الحجز بنجاح'
+              : 'Booking completed successfully',
+          onClose: () => {
+            // reset navigation to App
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{name: 'App'}],
+              }),
+            );
+          },
+        });
+      } else {
+        setMessageModal({
+          visible: true,
+          title: i18n.language === 'ar' ? 'خطأ' : 'Error',
+          message:
+            i18n.language === 'ar'
+              ? 'فشل الدفع، حاول لاحقًا'
+              : 'Payment failed, please try later.',
+        });
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+      setMessageModal({
+        visible: true,
+        title: i18n.language === 'ar' ? 'خطأ' : 'Error',
+        message:
+          err?.toString?.() ??
+          (i18n.language === 'ar' ? 'خطأ غير معروف' : 'Unknown error'),
+      });
+    } finally {
+      setSubmitting(false);
+      // refresh cart to reflect server state
+      fetchCart();
+    }
+  }, [fetchCart, navigation]);
+
+  // render each cart row (memoized)
+  const renderServiceItem = useCallback(
+    ({item}) => {
+      const serviceName =
+        i18n.language === 'ar' ? item?.service?.name_ar : item?.service?.name;
+      const employeeName =
+        i18n.language === 'ar' ? item?.employee?.name_ar : item?.employee?.name;
+      const dateStr = item?.date ? item.date.slice(5) : '';
+      const price = item?.service?.price ?? 0;
+
+      return (
+        <View style={styles.servRow}>
+          <View style={styles.servLeft}>
+            <Text style={styles.serviceName} numberOfLines={2}>
+              {serviceName}
+            </Text>
+            <Text style={styles.employeeName} numberOfLines={1}>
+              {employeeName}
+            </Text>
+            <Text style={styles.smallMeta}>
+              {dateStr} {t('at')} {item?.start_time}
+            </Text>
+          </View>
+
+          <View style={styles.servRight}>
+            <Text style={styles.price}>
+              {price} <Text style={styles.priceCurrency}>{currencyLabel}</Text>
+            </Text>
+
+            <TouchableOpacity
+              accessible
+              accessibilityLabel={i18n.language === 'ar' ? 'إزالة' : 'Remove'}
+              style={styles.removeBtn}
+              onPress={() => handleDeleteItem(item?.cart_item_id)}>
+              <Ionicons
+                name="remove-circle-outline"
+                size={22}
+                color={Colors.primary}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    },
+    [handleDeleteItem],
+  );
+
+  const listKeyExtractor = useCallback(item => String(item.cart_item_id), []);
+
+  const totalPriceDisplay = useMemo(() => {
+    if (!totals) return `0 ${currencyLabel}`;
+    // totals.total_price might be number or string depending on API
+    return `${totals.total_price ?? '0'} ${currencyLabel}`;
+  }, [totals]);
+
+  // header back
+  const handleGoBack = useCallback(() => navigation.goBack(), [navigation]);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.wrapper}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleGoBack}>
+            <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{t('Checkout')}</Text>
+          <View style={{width: 24}} />
+        </View>
+
+        <View style={styles.loaderWrap}>
           <Loading />
-        ) : (
-          <View style={{marginHorizontal: 20}}>
-            <View style={{}}>
-              <Text style={styles.modalTitle}>
-                {i18n.language === 'ar'
-                  ? cart?.[0]?.salon?.name_ar
-                  : cart?.[0]?.salon?.name}
-              </Text>
-            </View>
-            <FlatList
-              nestedScrollEnabled={true}
-              data={cart}
-              renderItem={renderServiceItem}
-              keyExtractor={item => item.cart_item_id.toString()}
-              style={styles.serviceList}
-            />
-            {/* <View style={styles.totalRow}>
-            <Text style={styles.title2}>Service fees :</Text>
-            <Text style={styles.priceText}>2 JDs</Text>
-          </View> */}
-            <View style={styles.totalRow}>
-              <Text style={styles.title2}>{t('Total')} :</Text>
-              <Text style={styles.priceText}>
-                {TPrice?.total_price} <Text style={{fontSize: 12}}>QAR</Text>
-              </Text>
-            </View>
-            {/* <View style={styles.paymentMethodsContainer}>
-                  <View style={styles.choose}>
-                    <Ionicons name="wallet-outline" size={25} />
-                    <View style={{flexDirection: 'row'}}>
-                      <Text style={[styles.title2, {marginRight: 15}]}>
-                        Pay Cash
-                      </Text>
-                      <Ionicons
-                        name="ellipse-outline"
-                        size={15}
-                        color={Colors.black3}
-                      />
-                    </View>
-                  </View>
-                  <View style={styles.choose}>
-                    <Image source={require('../../assets/images/visa_1.png')} />
-                    <View style={{flexDirection: 'row'}}>
-                      <Text style={[styles.title2, {marginRight: 15}]}>
-                        Pay By Visa
-                      </Text>
-                      <Ionicons
-                        name="ellipse"
-                        size={15}
-                        color={Colors.black3}
-                      />
-                    </View>
-                  </View>
-                </View> */}
-            <View style={styles.checkoutButtonsContainer}>
-              {subloading ? (
-                <Loading />
-              ) : (
-                <TouchableOpacity
-                  style={styles.confirmButton}
-                  onPress={Confirm}>
-                  <Text style={(styles.buttonText, {color: 'white'})}>
-                    {t('Confirm')}
-                  </Text>
-                </TouchableOpacity>
-              )}
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.wrapper}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={handleGoBack}
+          hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
+          <Ionicons name={isRTL ? 'arrow-forward' : 'arrow-back'} size={24} />
+        </TouchableOpacity>
+
+        <Text style={styles.headerTitle}>{t('Checkout')}</Text>
+
+        <View style={{width: 24}} />
+      </View>
+
+      <FlatList
+        data={cartItems}
+        renderItem={renderServiceItem}
+        keyExtractor={listKeyExtractor}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={<EmptyList text={t('No services in cart')} />}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        removeClippedSubviews
+        initialNumToRender={6}
+        maxToRenderPerBatch={8}
+        windowSize={11}
+      />
+
+      <View style={styles.summary}>
+        <Text style={styles.totalLabel}>{t('Total')} :</Text>
+        <Text style={styles.totalValue}>{totalPriceDisplay}</Text>
+      </View>
+
+      <View style={styles.checkoutButtonsContainer}>
+        <TouchableOpacity
+          style={[
+            styles.confirmButton,
+            submitting ? styles.disabledButton : null,
+          ]}
+          onPress={handleConfirm}
+          disabled={submitting || cartItems.length === 0}>
+          {submitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.confirmButtonText}>{t('Confirm')}</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Unified Message Modal (success / error / info) */}
+      <Modal
+        visible={messageModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() =>
+          setMessageModal(prev => ({...prev, visible: false}))
+        }>
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setMessageModal(prev => ({...prev, visible: false}))}>
+          <Pressable
+            style={styles.modalCard}
+            onPress={e => e.stopPropagation()}>
+            <View style={styles.modalIconWrap}>
+              <Ionicons
+                name={
+                  messageModal.title ===
+                  (i18n.language === 'ar' ? 'نجاح' : 'Success')
+                    ? 'checkmark-circle'
+                    : 'alert-circle'
+                }
+                size={44}
+                color={
+                  messageModal.title ===
+                  (i18n.language === 'ar' ? 'نجاح' : 'Success')
+                    ? Colors.primary
+                    : '#e74c3c'
+                }
+              />
             </View>
 
-            <Modal
-              animationType="slide"
-              transparent
-              visible={isVisible4}
-              onRequestClose={() => setIsVisible4(false)}>
-              <Pressable
-                style={[styles.modal, {justifyContent: 'center'}]}
-                onPress={() => setIsVisible4(false)}>
-                <Pressable
-                  style={[
-                    styles.modal2,
-                    {width: 300, borderRadius: 50, alignSelf: 'center'},
-                  ]}
-                  onPress={e => e.stopPropagation()}>
-                  <View
-                    style={[
-                      styles.modalHeaderContainer,
-                      {width: 180, alignSelf: 'flex-end'},
-                    ]}>
-                    <Text style={[styles.modalTitle, {fontSize: 18}]}>
-                      {i18n.language === 'ar' ? 'نجاح' : 'Success'}
-                    </Text>
-                    <Ionicons
-                      name="close-outline"
-                      size={25}
-                      onPress={() => setIsVisible4(false)}
-                    />
-                  </View>
-                  <Text
-                    style={[
-                      styles.modalTitle,
-                      {alignSelf: 'center', fontSize: 13, textAlign: 'center'},
-                    ]}>
-                    {i18n.language === 'ar'
-                      ? 'تمت عملية الحجز بنجاح'
-                      : 'Booking completed successfully'}
-                  </Text>
-                  <View
-                    style={[
-                      styles.modalButtonContainer,
-                      {justifyContent: 'center'},
-                    ]}>
-                    <TouchableOpacity style={styles.modalButton} onPress={Done}>
-                      <Text style={styles.buttonText}>{t('Done')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </Pressable>
-              </Pressable>
-            </Modal>
-            <Modal
-              animationType="slide"
-              transparent
-              visible={isVisible}
-              onRequestClose={() => setIsVisible(false)}>
-              <Pressable
-                style={[styles.modal, {justifyContent: 'center'}]}
-                onPress={() => setIsVisible(false)}>
-                <Pressable
-                  style={[
-                    styles.modal2,
-                    {width: 300, borderRadius: 50, alignSelf: 'center'},
-                  ]}
-                  onPress={e => e.stopPropagation()}>
-                  <View
-                    style={[
-                      styles.modalHeaderContainer,
-                      {width: 180, alignSelf: 'flex-end'},
-                    ]}>
-                    <Text style={[styles.modalTitle, {fontSize: 18}]}>
-                      {i18n.language === 'ar' ? 'خطأ' : 'Error'}
-                    </Text>
-                    <Ionicons
-                      name="close-outline"
-                      size={25}
-                      onPress={() => setIsVisible(false)}
-                    />
-                  </View>
-                  <Text
-                    style={[
-                      styles.modalTitle,
-                      {alignSelf: 'center', fontSize: 13, textAlign: 'center'},
-                    ]}>
-                    {ErrorC}
-                  </Text>
-                  <View
-                    style={[
-                      styles.modalButtonContainer,
-                      {justifyContent: 'center'},
-                    ]}>
-                    <TouchableOpacity style={styles.modalButton} onPress={Done}>
-                      <Text style={styles.buttonText}>{t('Done')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </Pressable>
-              </Pressable>
-            </Modal>
-          </View>
-        )}
-      </ScrollView>
+            <Text style={styles.modalTitleText}>{messageModal.title}</Text>
+            <Text style={styles.modalMessageText}>{messageModal.message}</Text>
+
+            <TouchableOpacity
+              style={styles.modalActionBtn}
+              onPress={() => {
+                setMessageModal(prev => ({...prev, visible: false}));
+                // call optional onClose if provided
+                messageModal.onClose && messageModal.onClose();
+              }}>
+              <Text style={styles.modalActionText}>{t('Done')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
+
 const styles = StyleSheet.create({
-  contaner: {
-    flex: 1,
-    backgroundColor: '#fff',
-    padding: 20,
-    paddingBottom: 100,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  textButton: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  title3: {
-    fontSize: 12,
-    color: Colors.black3,
-  },
-  lable: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  body: {
-    borderBottomColor: Colors.border,
+  wrapper: {flex: 1, backgroundColor: '#fff'},
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottomWidth: 1,
+    paddingHorizontal: 22,
+    paddingTop: Platform.OS === 'android' ? 12 : 8,
+    paddingBottom: 12,
+  },
+  headerTitle: {fontSize: 18, fontWeight: '700', color: Colors.text},
+
+  loaderWrap: {flex: 1, alignItems: 'center', justifyContent: 'center'},
+
+  listContent: {paddingHorizontal: 20, paddingBottom: 24},
+
+  servRow: {
     flexDirection: 'row',
-    marginTop: 15,
-    padding: 20,
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
   },
-  button: {
-    width: 342,
-    height: 68,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 20,
-    alignSelf: 'center',
-    marginTop: 80,
-    marginBottom: 25,
-    flexDirection: 'row',
-  },
-  modalContainer: {
-    alignItems: 'center',
-    borderWidth: 1,
-    elevation: 10,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    position: 'absolute',
-    marginTop: 250,
-    alignSelf: 'center',
-    height: 150,
-    padding: 20,
-    borderColor: Colors.border,
-    borderRadius: 15,
-  },
-  list: {
-    marginBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    padding: 20,
-  },
-  listTitle: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: '#000000',
-    marginBottom: 5,
-  },
+  servLeft: {flex: 1, paddingRight: 12},
+  serviceName: {fontSize: 15, fontWeight: '700', color: Colors.text},
+  employeeName: {fontSize: 12, color: Colors.black3, marginTop: 6},
+  smallMeta: {fontSize: 11, color: Colors.black3, marginTop: 4},
+
+  servRight: {alignItems: 'flex-end', justifyContent: 'center'},
+
+  price: {fontSize: 14, fontWeight: '800', color: Colors.text},
+  priceCurrency: {fontSize: 12, color: Colors.text},
+
+  removeBtn: {marginTop: 8},
+
+  separator: {height: 1, backgroundColor: Colors.border, opacity: 0.6},
+
   summary: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  totalText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#000000',
-  },
-  totalPrice: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: 'rgba(27, 31, 38, 0.72)',
-  },
-  lis: {
-    width: 262,
-    height: 50,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    backgroundColor: 'rgba(197,170,150,0.1)',
-    justifyContent: 'space-between',
-    flexDirection: 'row',
-    padding: 10,
-    alignSelf: 'center',
-    marginTop: 15,
-  },
-  checkoutButtonsContainer: {
-    flex: 1,
-    width: '100%',
-    alignItems: 'center',
-    paddingBottom:
-      Platform.OS === 'ios' ? screenHeight * 0.07 : screenHeight * 0.07,
-    paddingHorizontal: normalize(20),
-    justifyContent: 'flex-end',
-  },
-  confirmButton: {
-    // width: '90%',
-    // height: 60,
-    backgroundColor: Colors.primary,
-    // borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 15,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    width: '85%',
-    maxWidth: 350,
-    height: normalize(50),
-    borderRadius: normalize(18),
-  },
-  priceText: {
-    marginRight: 15,
-  },
-  title2: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 3,
-    color: Colors.black3,
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    alignItems: 'center',
-    marginTop: 15,
-    alignSelf: 'center',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  serviceList: {
-    maxHeight: screenHeight * 0.3,
-    marginTop: 15,
-  },
-  serv: {
-    paddingVertical: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  text: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modal: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-    justifyContent: 'flex-end',
-  },
-  modal2: {
-    width: '100%',
-    borderTopLeftRadius: 50,
-    borderTopRightRadius: 50,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
     backgroundColor: '#fff',
-    padding: 15,
-    maxHeight: screenHeight * 0.8,
-    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
-  modalHeaderContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  totalLabel: {fontSize: 14, fontWeight: '700', color: Colors.black3},
+  totalValue: {fontSize: 16, fontWeight: '800', color: Colors.text},
+
+  checkoutButtonsContainer: {
     alignItems: 'center',
-    padding: 10,
-    marginBottom: 15,
+    paddingHorizontal: 20,
+    paddingBottom:
+      Platform.OS === 'ios' ? screenHeight * 0.04 : screenHeight * 0.03,
   },
-  modalButtonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-  },
-  modalButton: {
-    width: '48%',
-    height: 60,
+
+  confirmButton: {
+    width: '100%',
+    maxWidth: 420,
+    height: normalize(50),
     backgroundColor: Colors.primary,
-    borderRadius: 50,
+    borderRadius: normalize(12),
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 25,
-    borderWidth: 1,
-    borderColor: Colors.primary,
+    marginTop: 12,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 15,
-    paddingHorizontal: 35,
+  confirmButtonText: {color: '#fff', fontWeight: '700', fontSize: 16},
+
+  disabledButton: {opacity: 0.7},
+
+  // empty state
+  emptyContainer: {padding: 40, alignItems: 'center'},
+  emptyText: {color: Colors.black3, fontSize: 14},
+
+  // modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
     alignItems: 'center',
-    // width: screenWidth *0.68
   },
+  modalCard: {
+    width: '85%',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 20,
+    alignItems: 'center',
+  },
+  modalIconWrap: {marginBottom: 8},
+  modalTitleText: {fontSize: 18, fontWeight: '700', marginBottom: 8},
+  modalMessageText: {
+    fontSize: 14,
+    color: Colors.black3,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  modalActionBtn: {
+    width: 140,
+    height: 44,
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalActionText: {color: '#fff', fontWeight: '700'},
 });
 
 export default Cart;

@@ -1,8 +1,7 @@
 /* eslint-disable react-native/no-inline-styles */
-import React, {useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   FlatList,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -11,18 +10,28 @@ import {
   Pressable,
   Dimensions,
   SafeAreaView,
+  ActivityIndicator,
 } from 'react-native';
 import {CommonActions, useNavigation} from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {Colors} from '../../assets/constants';
-import {ChangeAppoint, getEmployee, getTime} from '../../context/api';
+import {
+  appointment,
+  Cart,
+  ClearCart,
+  deleteCart,
+  getCart,
+  getEmployee,
+  getTime,
+} from '../../context/api';
 import Loading from '../../assets/common/Loading';
 import {screenHeight, screenWidth} from '../../assets/constants/ScreenSize';
 import {t} from 'i18next';
 import i18n from '../../assets/locales/i18';
 import moment from 'moment';
+import 'moment/locale/ar';
 
-// Get screen dimensions for responsive sizing
+// Screen dims
 const {width, height} = Dimensions.get('window');
 
 const months = [
@@ -39,6 +48,7 @@ const months = [
   'Nov',
   'Dec',
 ];
+
 const arabicMonths = [
   'يناير',
   'فبراير',
@@ -53,250 +63,482 @@ const arabicMonths = [
   'نوفمبر',
   'ديسمبر',
 ];
-const ChangeAppointment = ({route}) => {
-  const {appointmentID, salonId, serviceID, isSubService} = route.params;
-  // let salonId = 10;
-  console.log(
-    `salonId: ${salonId} , serviceID:::::: ${serviceID}, isSubService: ${isSubService}`,
-  );
 
-  const [selectedDate, setSelectedDate] = useState(null);
+/**
+ * DateBook — improved & 3-column time grid
+ * Fix: validation now uses a ref (selectedDateRef) so validation can't miss a freshly-selected time.
+ */
+
+const DateBook = ({route}) => {
+  const {salonId, serviceID, isSubService} = route.params || {};
+  const navigation = useNavigation();
+
+  // selection / UI state
+  const [selectedDate, setSelectedDate] = useState(null); // selected start_time string e.g. "09:00"
+  const selectedDateRef = useRef(null); // synchronous mirror for validation
   const [selectedEndDate, setSelectedEndDate] = useState(null);
   const [selectedDay, setSelectedDay] = useState(
     String(new Date().getDate()).padStart(2, '0'),
   );
-  const [isVisible4, setIsVisible4] = useState(false);
-  const [EmpName, setEmp] = useState([]);
-  const [AvTime, setTime] = useState([]);
-  const [isNames, setNames] = useState(false);
-  const [EmpID, setEmpID] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [Subloading, setsubLoading] = useState(false);
-  const [num, setnum] = useState(null);
-  const [errorC, setErrorC] = useState('');
-  const [NameSelected, setNameSelected] = useState('anyone');
 
-  const navigation = useNavigation();
-  const handleGoBack = () => navigation.goBack();
+  // employees & times
+  const [employees, setEmployees] = useState([]);
+  const [empModalVisible, setEmpModalVisible] = useState(false);
+  const [empSelectedId, setEmpSelectedId] = useState(null);
+  const [empSelectedName, setEmpSelectedName] = useState(t('anyone'));
+
+  const [timeSlots, setTimeSlots] = useState([]); // raw list from API
+  const [loadTime, setLoadTime] = useState(false);
   const [errorT, setErrorT] = useState('');
 
-  const daysInMonth = (month, year) => new Date(year, month + 1, 0).getDate();
+  // other UI / modal states
+  const [loading, setLoading] = useState(true);
+  const [isVisibleCart, setIsVisibleCart] = useState(false);
+  const [isVisibleMsg, setIsVisibleMsg] = useState(false);
+  const [cart, setCart] = useState([]);
+  const [TPrice, setTPrice] = useState(null);
+  const [subLoading, setSubLoading] = useState(false);
+  const [subLoading2, setSubLoading2] = useState(false);
+  const [num, setNum] = useState(null);
+  const [pop, setPop] = useState('');
+  const [errorC, setErrorC] = useState(null);
 
+  // date helpers
+  const daysInMonth = (month, year) => new Date(year, month + 1, 0).getDate();
   const [currentMonth, setCurrentMonth] = useState(
     String(new Date().getMonth() + 1).padStart(2, '0'),
   );
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [days, setDays] = useState([]);
 
+  // in-memory cache for times per (emp|any) + date
+  const timeCacheRef = useRef(new Map());
+  // fetch token to ignore stale responses
+  const fetchIdRef = useRef(0);
+  // mounted ref to avoid setState after unmount
+  const mountedRef = useRef(true);
   useEffect(() => {
-    if (EmpName.length > 0) {
-      setNameSelected(EmpName[0].name);
-      setEmpID(EmpName[0].id);
-    }
-  }, [EmpName]);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
-  const nextMonth = () => {
-    let month = parseInt(currentMonth, 10);
-    if (month === 12) {
-      setCurrentMonth('01');
-      setCurrentYear(prev => prev + 1);
-    } else {
-      setCurrentMonth(String(month + 1).padStart(2, '0'));
-    }
-  };
-
-  const today = new Date();
-  const currentRealMonth = today.getMonth() + 1; // 1-based month number
-  const currentRealYear = today.getFullYear();
-  const prevMonth = () => {
-    let month = parseInt(currentMonth, 10);
-    let year = currentYear;
-
-    // Disable going to months before current month if same year
-    if (year === currentRealYear && month === currentRealMonth) {
-      // Already at current month/year, do nothing
-      return;
-    }
-
-    if (month === 1) {
-      if (year > currentRealYear) {
-        setCurrentMonth('12');
-        setCurrentYear(prev => prev - 1);
+  // initialize employees
+  const fetchEmployees = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await getEmployee(salonId, serviceID, isSubService);
+      const list = Array.isArray(res) ? res : [];
+      setEmployees(list);
+      if (list.length > 0) {
+        // default to first employee
+        setEmpSelectedId(list[0].id);
+        setEmpSelectedName(list[0].name);
+      } else {
+        // "anyone" if none present
+        setEmpSelectedId(null);
+        setEmpSelectedName(t('anyone'));
       }
-      // else do nothing (can't go before current year)
-    } else {
-      setCurrentMonth(String(month - 1).padStart(2, '0'));
+    } catch (err) {
+      console.log('fetchEmployees error', err);
+    } finally {
+      if (mountedRef.current) setLoading(false);
     }
-  };
+  }, [salonId, serviceID, isSubService]);
 
+  useEffect(() => {
+    fetchEmployees();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // compute visible days array when month/year changes
   useEffect(() => {
     const daysCount = daysInMonth(parseInt(currentMonth, 10) - 1, currentYear);
     const today = new Date();
     const todayMonth = today.getMonth();
     const todayDate = today.getDate();
 
-    const daysArray = Array.from({length: daysCount}, (_, index) => {
-      const dayDate = new Date(
-        currentYear,
-        parseInt(currentMonth, 10) - 1,
-        index + 1,
-      );
-      const dayName = dayDate.toLocaleString(
+    const arr = Array.from({length: daysCount}, (_, i) => {
+      const d = new Date(currentYear, parseInt(currentMonth, 10) - 1, i + 1);
+      const dayName = d.toLocaleString(
         i18n.language === 'ar' ? 'ar' : 'default',
-        {weekday: 'short'},
+        {
+          weekday: 'short',
+        },
       );
-      return {
-        id: index + 1,
-        day: String(index + 1).padStart(2, '0'),
-        dayName: dayName, // Store the abbreviated day name
-      };
-    }).filter(
-      day =>
-        todayMonth !== parseInt(currentMonth, 10) - 1 || day.id >= todayDate,
+      return {id: i + 1, day: String(i + 1).padStart(2, '0'), dayName};
+    }).filter(day =>
+      todayMonth !== parseInt(currentMonth, 10) - 1
+        ? true
+        : day.id >= todayDate,
     );
 
-    setDays(daysArray);
+    setDays(arr);
   }, [currentMonth, currentYear]);
 
-  useEffect(() => {
-    const fetchEmployees = async () => {
-      try {
-        const Data = await getEmployee(salonId, serviceID, isSubService);
-        setEmp(Data);
-      } catch (error) {
-        console.log('Error fetching employees:', error);
-      } finally {
-        setLoading(false);
+  // constants for month navigation
+  const Today = new Date();
+  const currentRealMonth = Today.getMonth() + 1;
+  const currentRealYear = Today.getFullYear();
+  const nextMonth = useCallback(() => {
+    let m = parseInt(currentMonth, 10);
+    if (m === 12) {
+      setCurrentMonth('01');
+      setCurrentYear(y => y + 1);
+    } else {
+      setCurrentMonth(String(m + 1).padStart(2, '0'));
+    }
+  }, [currentMonth]);
+  const prevMonth = useCallback(() => {
+    let m = parseInt(currentMonth, 10);
+    let y = currentYear;
+    if (y === currentRealYear && m === currentRealMonth) return;
+    if (m === 1) {
+      if (y > currentRealYear) {
+        setCurrentMonth('12');
+        setCurrentYear(y - 1);
       }
-    };
-    fetchEmployees();
-  }, [
-    currentMonth,
-    currentYear,
-    isSubService,
-    salonId,
-    selectedDay,
-    serviceID,
-  ]);
+    } else {
+      setCurrentMonth(String(m - 1).padStart(2, '0'));
+    }
+  }, [currentMonth, currentYear, currentRealMonth, currentRealYear]);
 
+  // date string YYYY-MM-DD
   const date = `${currentYear}-${currentMonth}-${selectedDay}`;
 
+  // compute pill width for 3 columns (responsive)
+  const pillWidth = useMemo(() => {
+    // use 90% of screenWidth for content, subtract gaps (3 items => 2 gaps of 16)
+    const containerWidth = Math.floor(screenWidth * 0.9);
+    const gaps = 16 * 2;
+    const raw = Math.floor((containerWidth - gaps) / 3);
+    return Math.max(88, raw); // don't go too small
+  }, []);
+
+  // compute height to keep pills consistent (slightly shorter than width)
+  const pillHeight = Math.round(pillWidth * 0.55);
+
+  // helper: clear selection (both state + ref)
+  const clearSelection = useCallback(() => {
+    setSelectedDate(null);
+    selectedDateRef.current = null;
+    setSelectedEndDate(null);
+  }, []);
+
+  // fetch times (uses cache if available)
   useEffect(() => {
-    if (!selectedDay) {
+    if (!selectedDay) return;
+
+    // build cache key
+    const key = `${empSelectedId ?? 'any'}|${date}`;
+
+    // if cached, apply immediately and skip network
+    const cached = timeCacheRef.current.get(key);
+    if (cached) {
+      setTimeSlots(cached);
+      setErrorT('');
+      setLoadTime(false);
+
+      // ensure previously selected time is still valid for this day
+      const currently = selectedDateRef.current;
+      if (currently) {
+        const found = cached.some(
+          s => s.available && s.start_time === currently,
+        );
+        if (!found) clearSelection();
+      }
       return;
     }
-    const fetchTimeSlots = async () => {
+
+    // otherwise fetch
+    let cancelled = false;
+    const myFetchId = ++fetchIdRef.current;
+
+    const doFetch = async () => {
+      setLoadTime(true);
       setErrorT('');
       try {
-        const Data = await getTime(
+        const res = await getTime(
           salonId,
           serviceID,
           date,
-          EmpID,
+          empSelectedId,
           isSubService,
         );
-        setTime(Data);
-        // console.log('HERE', Data);
-      } catch (error) {
-        console.log('Error fetching time slots:', error);
-        if (error === 'Salon is not working on this day.') {
-          setErrorT(error);
-        } else {
-          setErrorT(error);
+        const list = Array.isArray(res) ? res : [];
+        if (cancelled || fetchIdRef.current !== myFetchId) return;
+        // store in cache and set state
+        timeCacheRef.current.set(key, list);
+        if (mountedRef.current) {
+          setTimeSlots(list);
+          // ensure selected time is still valid against new list
+          const currently = selectedDateRef.current;
+          if (currently) {
+            const found = list.some(
+              s => s.available && s.start_time === currently,
+            );
+            if (!found) clearSelection();
+          }
         }
-
-        // (NOBRIDGE) LOG  salonId: 10, serviceId: a47b43c6-c140-4817-a6d1-50b5cb32d38e,Date : 2025-04-28, employee_id 93, isSubService: 1
-        // (NOBRIDGE) LOG  new Time:
+      } catch (err) {
+        console.log('getTime error', err);
+        if (cancelled || fetchIdRef.current !== myFetchId) return;
+        if (mountedRef.current) {
+          setTimeSlots([]);
+          setErrorT(err?.toString?.() ?? t('Error fetching times'));
+          clearSelection();
+        }
+      } finally {
+        if (
+          !cancelled &&
+          fetchIdRef.current === myFetchId &&
+          mountedRef.current
+        ) {
+          setLoadTime(false);
+        }
       }
     };
-    fetchTimeSlots();
-  }, [EmpID, date, isSubService, salonId, selectedDay, serviceID]);
-  const fetchTimeSlot = async () => {
-    setLoadTime(true);
-    setErrorT('');
-    setSelectedDate(null);
-    setSelectedEndDate(null);
-    try {
-      const Data = await getTime(salonId, serviceID, date, EmpID, isSubService);
-      setTime(Data);
-      // console.log('HERE', Data);
-    } catch (error) {
-      console.log('Error fetching time slots 111:', error);
-      // if (error === 'Salon is not working on this day.') {
-      //   setErrorT(error);
-      // } else {
-      setErrorT(error);
-      // }
 
-      // (NOBRIDGE) LOG  salonId: 10, serviceId: a47b43c6-c140-4817-a6d1-50b5cb32d38e,Date : 2025-04-28, employee_id 93, isSubService: 1
-      // (NOBRIDGE) LOG  new Time:
-    } finally {
-      setLoadTime(false);
+    doFetch();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    empSelectedId,
+    date,
+    salonId,
+    serviceID,
+    isSubService,
+    selectedDay,
+    clearSelection,
+  ]);
+
+  // deleting item
+  const delete_item = useCallback(async id => {
+    try {
+      await deleteCart(id);
+      setCart(prev => {
+        const updated = prev.filter(x => x.cart_item_id !== id);
+        if (updated.length === 0) setIsVisibleCart(false);
+        return updated;
+      });
+    } catch (err) {
+      console.log('delete_item error', err);
     }
-  };
-  const renderDateItemDay = ({item}) => {
-    const isSelected = selectedDay === item.day;
-    return (
-      <TouchableOpacity
-        style={[
-          styles.item2,
-          {backgroundColor: isSelected ? Colors.primary : 'white'},
-        ]}
-        onPress={() => [setSelectedDay(item.day), fetchTimeSlot()]}>
-        <Text
-          style={[styles.selectDate, {color: isSelected ? 'white' : '#000'}]}>
-          {i18n.language === 'ar'
-            ? item.day.toString().replace(/\d/g, digit => '٠١٢٣٤٥٦٧٨٩'[digit])
-            : item.day}
-        </Text>
-        <Text
-          style={[
-            styles.selectDate,
-            {color: isSelected ? 'white' : '#000', fontSize: 12},
-          ]}>
-          {item.dayName}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
+  }, []);
 
-  const Confirm = async () => {
-    setnum('');
-    setsubLoading(true);
-    try {
-      const Data = await ChangeAppoint(
-        appointmentID,
-        date,
-        selectedDate,
-        selectedEndDate,
-        EmpID,
+  // UI: render employee row for modal
+  const renderEmployeeRow = useCallback(
+    ({item}) => {
+      const initials = (item.name || '')
+        .split(' ')
+        .map(s => s.charAt(0))
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+
+      const selected = empSelectedId === item.id;
+
+      return (
+        <TouchableOpacity
+          style={[styles.empRow, selected && styles.empRowSelected]}
+          onPress={() => {
+            setEmpSelectedId(item.id);
+            setEmpSelectedName(item.name);
+            setEmpModalVisible(false);
+            // times will be fetched by effect
+          }}>
+          <View
+            style={[styles.empAvatar, selected && styles.empAvatarSelected]}>
+            <Text style={[styles.empInitials, selected && {color: '#fff'}]}>
+              {initials || 'NA'}
+            </Text>
+          </View>
+          <View style={{flex: 1, paddingHorizontal: 10}}>
+            <Text style={styles.empName} numberOfLines={1}>
+              {item.name}
+            </Text>
+            {item.position ? (
+              <Text style={styles.empPosition} numberOfLines={1}>
+                {item.position}
+              </Text>
+            ) : null}
+          </View>
+          {selected && (
+            <Ionicons
+              name="checkmark-circle"
+              size={20}
+              color={Colors.primary}
+            />
+          )}
+        </TouchableOpacity>
       );
-      if (Data) {
-        setIsVisible4(true);
-        Pop_up(6);
-        setnum(6);
-      }
-    } catch (error) {
-      console.log(error);
-      setnum(7);
-      setErrorC(error);
-      setIsVisible4(true);
-    }
-  };
+    },
+    [empSelectedId],
+  );
 
-  const Done = () => {
-    setIsVisible4(false);
+  // Times rendering: prettier pill UI (returns element)
+  const renderTimeSlot = useCallback(
+    slot => {
+      // hide not-available times (user asked to not show them)
+      if (!slot || !slot.available) return null;
+
+      const isSelected = selectedDateRef.current === slot.start_time;
+      const tm = moment(slot.start_time, 'HH:mm')
+        .locale(i18n.language === 'ar' ? 'ar' : 'en')
+        .format('hh:mm a');
+
+      const onPress = () => {
+        // update both state and ref synchronously
+        setSelectedDate(slot.start_time);
+        selectedDateRef.current = slot.start_time;
+        setSelectedEndDate(slot.end_time);
+      };
+
+      return (
+        <TouchableOpacity
+          key={String(slot.id ?? Math.random())}
+          activeOpacity={0.85}
+          onPress={onPress}
+          style={[
+            styles.timePill,
+            styles.timePillAvailable,
+            isSelected && styles.timePillSelected,
+            {width: pillWidth, height: pillHeight},
+          ]}>
+          <Text style={[styles.timeText, isSelected && {color: '#fff'}]}>
+            {tm}
+          </Text>
+        </TouchableOpacity>
+      );
+    },
+    [pillWidth, pillHeight],
+  );
+
+  // booking / cart flows (stabilized & memoized)
+  const handleGoToCheckout = useCallback(async () => {
+    // use ref first (synchronous), fallback to state
+    const currentSelected = selectedDateRef.current || selectedDate;
+    if (!currentSelected) {
+      Pop_up(1);
+      setIsVisibleMsg(true);
+      return;
+    }
+    setSubLoading(true);
+    try {
+      const res = await Cart(
+        salonId,
+        serviceID,
+        empSelectedId,
+        date,
+        currentSelected,
+        selectedEndDate,
+        isSubService,
+      );
+      if (res) {
+        setIsVisibleMsg(true);
+        Pop_up(9);
+        setNum(9);
+      }
+    } catch (err) {
+      const msg = String(err);
+      if (
+        msg ===
+        'You have items from a different salon in your cart. Would you like to clear your cart and add this item?'
+      ) {
+        Pop_up(4);
+        setNum(4);
+        setIsVisibleMsg(true);
+      } else if (
+        msg.includes(
+          'You already have an appointment in your cart during this time slot.',
+        )
+      ) {
+        Pop_up(8);
+        setNum(8);
+        setIsVisibleMsg(true);
+      } else {
+        Pop_up(8);
+        setNum(8);
+        setIsVisibleMsg(true);
+      }
+    } finally {
+      setSubLoading(false);
+    }
+  }, [
+    selectedDate,
+    selectedEndDate,
+    salonId,
+    serviceID,
+    empSelectedId,
+    date,
+    isSubService,
+  ]);
+
+  const Confirm = useCallback(async () => {
+    const currentSelected = selectedDateRef.current || selectedDate;
+    if (!currentSelected) {
+      Pop_up(1);
+      setIsVisibleMsg(true);
+      return;
+    }
+    setSubLoading2(true);
+    try {
+      const resp = await appointment();
+      if (resp) {
+        setIsVisibleCart(false);
+        Pop_up(6);
+        setNum(6);
+        setIsVisibleMsg(true);
+      }
+    } catch (err) {
+      setNum(7);
+      setErrorC(err);
+      setIsVisibleCart(false);
+      setIsVisibleMsg(true);
+    } finally {
+      setSubLoading2(false);
+    }
+  }, [selectedDate]);
+
+  const Done = useCallback(() => {
+    setIsVisibleMsg(false);
     navigation.dispatch(
       CommonActions.reset({
         index: 0,
         routes: [{name: 'App'}],
       }),
     );
-  };
+  }, [navigation]);
 
-  const [pop, setPop] = useState('');
+  const handleClearCart = useCallback(async () => {
+    try {
+      const res = await ClearCart();
+      if (res) {
+        Pop_up(5);
+        setNum(5);
+        setIsVisibleMsg(true);
+      }
+    } catch (err) {
+      console.log('ClearCart error', err);
+    }
+  }, []);
 
-  const Pop_up = numP => {
+  const fetchCart = useCallback(async () => {
+    try {
+      const res = await getCart();
+      if (res) {
+        setCart(res.data || []);
+        setTPrice(res);
+      }
+    } catch (err) {
+      console.log('getCart error', err);
+    }
+  }, []);
+
+  const Pop_up = useCallback(numP => {
     switch (numP) {
       case 1:
         setPop(
@@ -305,15 +547,20 @@ const ChangeAppointment = ({route}) => {
             : 'Please select a suitable time',
         );
         break;
-
-      case 3:
+      case 4:
         setPop(
           i18n.language === 'ar'
-            ? 'يرجى اختيار موظفك المفضل'
-            : 'Please select your preferred staff member',
+            ? 'لديك خدمة من صالون مختلف في سلتك. \n \n هل ترغب في مسح سلتك وإضافة هذه الخدمة؟'
+            : 'You have service from a different salon in your cart. \n \n Would you like to clear your cart and add this service?',
         );
         break;
-
+      case 5:
+        setPop(
+          i18n.language === 'ar'
+            ? 'تم مسح السلة. يمكنك الآن إتمام عملية الحجز'
+            : 'The cart has been cleared. You can now complete the appointment process.',
+        );
+        break;
       case 6:
         setPop(
           i18n.language === 'ar'
@@ -321,76 +568,53 @@ const ChangeAppointment = ({route}) => {
             : 'Booking completed successfully',
         );
         break;
-
+      case 8:
+        setPop(
+          i18n.language === 'ar'
+            ? 'لديك خدمة في نفس الوقت موجود في سلتك.'
+            : 'You have a service already in your cart at the same time.',
+        );
+        break;
+      case 9:
+        setPop(
+          i18n.language === 'ar'
+            ? 'تمت عملية الإضافة الى السلة بنجاح'
+            : 'The item was successfully added to the cart.',
+        );
+        break;
       default:
         setPop('Unknown error');
     }
-  };
+  }, []);
+
+  // employee modal header label
+  const employeeLabel = useMemo(
+    () => empSelectedName || t('anyone'),
+    [empSelectedName],
+  );
+
   const monthsToDisplay = i18n.language === 'ar' ? arabicMonths : months;
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.salonInfo}>
-        <Ionicons
-          name={i18n.language === 'en' ? 'arrow-back' : 'arrow-forward'}
-          size={25}
-          onPress={handleGoBack}
-        />
-      </View>
-      {loading ? (
-        <Loading />
-      ) : (
-        <ScrollView>
-          <View style={styles.modalHeader}>
-            <Text style={styles.headerText}>{t('Select Your Date')}</Text>
-          </View>
+  // render header as part of vertical FlatList's ListHeaderComponent
+  const ListHeaderComponent = useCallback(() => {
+    return (
+      <View>
+        <View style={styles.headerRow}>
+          <Text style={styles.headerText}>{t('Select Your Date')}</Text>
+        </View>
 
-          <View style={styles.dropdownContainer}>
-            <TouchableOpacity
-              style={[
-                styles.dropdownButton,
-                {borderBottomWidth: isNames ? 0 : 1},
-              ]}
-              onPress={() => setNames(!isNames)}>
-              <Text style={styles.dropdownText}>
-                {NameSelected ? `${NameSelected}` : 'anyone'}
-              </Text>
-              <Ionicons
-                name={isNames ? 'chevron-up' : 'chevron-down'}
-                size={25}
-              />
-            </TouchableOpacity>
-            {isNames && (
-              <View style={styles.dropdown}>
-                <TouchableOpacity
-                  onPress={() => [
-                    setNameSelected(null),
-                    setEmpID(null),
-                    setNames(false),
-                  ]}>
-                  <Text style={styles.dropdownItemText}>anyone</Text>
-                </TouchableOpacity>
-                <FlatList
-                  nestedScrollEnabled={true}
-                  data={EmpName}
-                  renderItem={({item}) => {
-                    return (
-                      <TouchableOpacity
-                        onPress={() => [
-                          setNameSelected(item.name),
-                          setEmpID(item.id),
-                          setNames(false),
-                        ]}>
-                        <Text style={styles.dropdownItemText}>{item.name}</Text>
-                      </TouchableOpacity>
-                    );
-                  }}
-                  keyExtractor={item => item.id.toString()}
-                />
-              </View>
-            )}
-          </View>
+        {/* Employee selector: button opens modal */}
+        <View style={styles.empSelectRow}>
+          <TouchableOpacity
+            style={styles.empSelectBtn}
+            onPress={() => setEmpModalVisible(true)}>
+            <Text style={styles.empSelectText}>{employeeLabel}</Text>
+            <Ionicons name="chevron-down" size={20} />
+          </TouchableOpacity>
+        </View>
 
+        {/* Month controls */}
+        <View style={{direction: 'ltr'}}>
           <View style={styles.monthSelector}>
             {i18n.language === 'en' ? (
               <TouchableOpacity
@@ -413,7 +637,7 @@ const ChangeAppointment = ({route}) => {
                 <Ionicons name="chevron-forward" size={20} />
               </TouchableOpacity>
             )}
-            <Text>
+            <Text style={styles.monthLabel}>
               {monthsToDisplay[parseInt(currentMonth, 10) - 1]}, {currentYear}
             </Text>
             {i18n.language === 'en' ? (
@@ -440,385 +664,545 @@ const ChangeAppointment = ({route}) => {
           </View>
 
           <FlatList
-            nestedScrollEnabled={true}
             data={days}
-            renderItem={renderDateItemDay}
-            keyExtractor={item => item.id.toString()}
+            renderItem={({item}) => {
+              const isSelected = selectedDay === item.day;
+              return (
+                <TouchableOpacity
+                  style={[
+                    styles.dayItem,
+                    {backgroundColor: isSelected ? Colors.primary : '#fff'},
+                  ]}
+                  onPress={() => {
+                    if (selectedDay === item.day) return; // no re-fetch if same day
+                    // when changing day, clear previous time selection (prevent stale validation)
+                    clearSelection();
+                    setSelectedDay(item.day);
+                  }}>
+                  <Text
+                    style={[
+                      styles.dayNumber,
+                      {color: isSelected ? '#fff' : '#000'},
+                    ]}>
+                    {i18n.language === 'ar'
+                      ? item.day.toString().replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[d])
+                      : item.day}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.dayName,
+                      {color: isSelected ? '#fff' : '#000'},
+                    ]}>
+                    {item.dayName}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
+            keyExtractor={item => String(item.id)}
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={{width: screenWidth * 0.73, alignSelf: 'center'}}
+            contentContainerStyle={{paddingVertical: 8}}
+            style={{width: screenWidth * 0.9, alignSelf: 'center'}}
           />
+        </View>
 
-          <View style={[styles.modalHeader, {marginTop: screenHeight * 0.08}]}>
-            <Text style={styles.headerText}>{t('Available Times')}</Text>
-          </View>
-          {errorT ? (
-            <Text
-              style={[styles.headerText, {alignSelf: 'center', marginTop: 55}]}>
-              {errorT}
-            </Text>
-          ) : (
+        <View style={[styles.headerRow, {marginTop: 16}]}>
+          <Text style={styles.headerText}>{t('Available Times')}</Text>
+        </View>
+      </View>
+    );
+  }, [
+    employeeLabel,
+    days,
+    selectedDay,
+    currentMonth,
+    currentYear,
+    monthsToDisplay,
+    clearSelection,
+  ]);
+
+  // main screen render
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.salonInfo}>
+        <Ionicons
+          name={i18n.language === 'en' ? 'arrow-back' : 'arrow-forward'}
+          size={25}
+          onPress={() => navigation.goBack()}
+        />
+      </View>
+
+      {loading ? (
+        <Loading />
+      ) : (
+        <FlatList
+          data={[]} // empty; all content sits in ListHeaderComponent + below
+          ListHeaderComponent={
             <>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  justifyContent: 'center',
-                  direction: 'ltr',
+              {ListHeaderComponent()}
 
-                  // width: screenWidth * 0.88,
-                }}>
-                {AvTime?.sort((a, b) =>
-                  a.start_time.localeCompare(b.start_time),
-                ).map(item => {
-                  const formattedTime = moment(item.start_time, 'HH:mm')
-                    .locale(i18n.language === 'ar' ? 'ar' : 'en')
-                    .format('hh:mm a');
-
-                  return (
-                    <TouchableOpacity
-                      key={item?.id?.toString() || Math.random().toString()}
-                      style={[
-                        styles.item,
-                        {
-                          backgroundColor:
-                            item.available === true
-                              ? selectedDate === item.start_time
-                                ? Colors.primary
-                                : 'white'
-                              : Colors.border,
-                        },
-                      ]}
-                      disabled={item.available === false}
-                      onPress={() => {
-                        if (item.available === true) {
-                          setSelectedDate(item.start_time);
-                          setSelectedEndDate(item.end_time);
-                        }
-                      }}>
-                      <Text
-                        style={{
-                          color:
-                            item.available === true
-                              ? selectedDate === item.start_time
-                                ? 'white'
-                                : '#000'
-                              : '#000',
-                        }}>
-                        {formattedTime}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {Subloading ? (
-                <Loading />
+              {/* times grid */}
+              {errorT ? (
+                <Text
+                  style={[
+                    styles.headerText,
+                    {alignSelf: 'center', marginTop: 20},
+                  ]}>
+                  {errorT}
+                </Text>
+              ) : loadTime ? (
+                <ActivityIndicator
+                  size="large"
+                  color={Colors.primary}
+                  style={{marginTop: 20}}
+                />
               ) : (
-                <View style={styles.modalButtonContainer}>
-                  <TouchableOpacity
-                    style={styles.modalButton}
-                    onPress={Confirm}>
-                    <Text style={styles.buttonText}>{t('Change')}</Text>
-                  </TouchableOpacity>
+                <View style={styles.timesWrap}>
+                  {timeSlots.filter(s => s && s.available).length === 0 ? (
+                    <Text
+                      style={{
+                        textAlign: 'center',
+                        width: '100%',
+                        marginTop: 20,
+                      }}>
+                      {t('No times available')}
+                    </Text>
+                  ) : (
+                    timeSlots
+                      .filter(s => s && s.available)
+                      .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                      .map(slot => renderTimeSlot(slot))
+                  )}
                 </View>
               )}
-            </>
-          )}
-          {/* ask Modal */}
 
-          <Modal
-            animationType="slide"
-            transparent
-            visible={isVisible4}
-            onRequestClose={() => setIsVisible4(false)}>
-            <Pressable
-              style={[styles.modal, {justifyContent: 'center'}]}
-              onPress={() => setIsVisible4(false)}>
-              <Pressable
-                style={[
-                  styles.modal2,
-                  {width: 300, borderRadius: 50, alignSelf: 'center'},
-                ]}
-                onPress={e => e.stopPropagation()}>
-                <View
-                  style={[
-                    styles.modalHeaderContainer,
-                    {width: 180, alignSelf: 'flex-end'},
-                  ]}>
-                  <Text style={[styles.modalTitle, {fontSize: 18}]}>
-                    {num === 6 ? t('Success') : t('Sorry')}
-                  </Text>
+              {/* bottom actions */}
+              <View style={{paddingHorizontal: 12, marginTop: 20}}>
+                <Text style={[styles.smallText, {textAlign: 'center'}]}>
+                  {t('You have 10 minutes before the booking is canceled.')}
+                </Text>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    style={styles.primaryBtn}
+                    onPress={handleGoToCheckout}
+                    disabled={subLoading}>
+                    {subLoading ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.primaryBtnText}>
+                        {t('Go To Checkout')}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn]}
+                    onPress={() => navigation.goBack()}>
+                    <Text style={[styles.primaryBtnText, {color: '#000'}]}>
+                      {t('Add More')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </>
+          }
+          keyExtractor={() => 'k'}
+          contentContainerStyle={styles.contentContainer}
+        />
+      )}
+
+      {/* Employee selection modal */}
+      <Modal
+        visible={empModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEmpModalVisible(false)}>
+        <Pressable
+          style={styles.empModalOverlay}
+          onPress={() => setEmpModalVisible(false)}>
+          <Pressable style={styles.empModal} onPress={e => e.stopPropagation()}>
+            <View style={styles.empModalHeader}>
+              <Text style={styles.empModalTitle}>{t('Choose Staff')}</Text>
+              <Ionicons
+                name="close-outline"
+                size={20}
+                onPress={() => setEmpModalVisible(false)}
+              />
+            </View>
+
+            <FlatList
+              data={employees}
+              renderItem={renderEmployeeRow}
+              keyExtractor={item => String(item.id)}
+              ItemSeparatorComponent={() => <View style={{height: 8}} />}
+              showsVerticalScrollIndicator={false}
+              style={{maxHeight: height * 0.6}}
+            />
+
+            <TouchableOpacity
+              style={styles.empModalClose}
+              onPress={() => setEmpModalVisible(false)}>
+              <Text style={{color: '#fff', fontWeight: '700'}}>
+                {t('Close')}
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* generic message modal */}
+      <Modal
+        visible={isVisibleMsg}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsVisibleMsg(false)}>
+        {/* Centered overlay: both vertically and horizontally centered */}
+        <Pressable
+          style={[
+            styles.modal,
+            {justifyContent: 'center', alignItems: 'center'},
+          ]}
+          onPress={() => setIsVisibleMsg(false)}>
+          <Pressable
+            style={[styles.modal2, {width: 300, borderRadius: 18}]}
+            onPress={e => e.stopPropagation()}>
+            <View style={{alignItems: 'center', marginBottom: 8}}>
+              <Ionicons
+                name={
+                  num === 5 || num === 6 || num === 9
+                    ? 'checkmark-circle'
+                    : 'alert-circle'
+                }
+                size={36}
+                color={
+                  num === 5 || num === 6 || num === 9
+                    ? Colors.primary
+                    : '#e74c3c'
+                }
+              />
+            </View>
+            <Text style={{textAlign: 'center', marginBottom: 16}}>
+              {num === 7 ? errorC : pop}
+            </Text>
+            <TouchableOpacity
+              style={[styles.primaryBtn, {alignSelf: 'center', width: 140}]}
+              onPress={() => (num === 6 ? Done() : setIsVisibleMsg(false))}>
+              <Text style={styles.primaryBtnText}>
+                {num === 6 ? t('Done') : t('Close')}
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* checkout modal */}
+      <Modal
+        visible={isVisibleCart}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsVisibleCart(false)}>
+        <Pressable style={styles.modal} onPress={() => setIsVisibleCart(false)}>
+          <Pressable style={styles.modal2} onPress={e => e.stopPropagation()}>
+            {subLoading2 ? (
+              <Loading />
+            ) : (
+              <>
+                <View style={styles.modalHeaderContainer}>
+                  <Text style={styles.modalTitle}>{t('Checkout')}</Text>
                   <Ionicons
                     name="close-outline"
                     size={25}
-                    onPress={() => setIsVisible4(false)}
+                    onPress={() => setIsVisibleCart(false)}
                   />
                 </View>
-                <Text
-                  style={[
-                    styles.modalTitle,
-                    {alignSelf: 'center', fontSize: 13, textAlign: 'center'},
-                  ]}>
-                  {num === 7 ? errorC : pop}
-                </Text>
-                <View
-                  style={[
-                    styles.modalButtonContainer,
-                    {justifyContent: 'center'},
-                  ]}>
-                  {num === 6 ? (
-                    <TouchableOpacity style={styles.modalButton} onPress={Done}>
-                      <Text style={styles.buttonText}>{t('Done')}</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.modalButton}
-                      onPress={() => setIsVisible4(false)}>
-                      <Text style={styles.buttonText}>{t('Close')}</Text>
-                    </TouchableOpacity>
+
+                <FlatList
+                  data={cart}
+                  renderItem={({item}) => (
+                    <View style={styles.serv}>
+                      <View>
+                        <Text style={styles.text}>
+                          {i18n.language === 'ar'
+                            ? item?.service?.name_ar
+                            : item?.service?.name}
+                        </Text>
+                        <Text style={styles.title2}>
+                          {item?.employee?.name
+                            ?.split(' ')
+                            .slice(0, 2)
+                            .join(' ')}
+                        </Text>
+                      </View>
+                      <View style={{flexDirection: 'row'}}>
+                        <View>
+                          <Text style={{marginRight: 15}}>
+                            {String(item?.service?.price).slice(0, -3)}{' '}
+                            <Text style={{fontSize: 12}}>
+                              {i18n.language === 'ar' ? 'ر.ق' : 'QAR'}
+                            </Text>
+                          </Text>
+                          <Text style={[styles.title2, {fontSize: 10}]}>
+                            {item?.date.slice(5)} {t('at')} {item?.start_time}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[
+                            styles.item3,
+                            {
+                              paddingLeft: 15,
+                              paddingRight: 15,
+                              backgroundColor: '#000',
+                            },
+                          ]}
+                          onPress={() => delete_item(item?.cart_item_id)}>
+                          <Text style={[styles.title2, {color: '#fff'}]}>
+                            {t('Remove')}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                   )}
+                  keyExtractor={item => String(item.cart_item_id)}
+                  style={styles.serviceList}
+                />
+
+                {cart.length > 0 && (
+                  <View style={styles.totalRow}>
+                    <Text style={styles.title2}>{t('Total')}</Text>
+                    <Text style={styles.priceText}>
+                      {String(TPrice?.total_price ?? '0').slice(0, -3)}{' '}
+                      <Text style={{fontSize: 12}}>
+                        {i18n.language === 'ar' ? 'ر.ق' : 'QAR'}
+                      </Text>
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.checkoutButtonsContainer}>
+                  <TouchableOpacity
+                    style={styles.confirmButton}
+                    onPress={Confirm}>
+                    <Text style={styles.buttonText}>{t('Confirm')}</Text>
+                  </TouchableOpacity>
                 </View>
-              </Pressable>
-            </Pressable>
-          </Modal>
-        </ScrollView>
-      )}
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  // container & header
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingBottom: 20,
     paddingHorizontal: 20,
+    paddingBottom: 20,
   },
   salonInfo: {
     flexDirection: 'row',
     padding: 15,
     direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
-  modalHeader: {
-    padding: 10,
-    paddingHorizontal: 40,
-    marginBottom: 15,
-    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
-  },
-  headerText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  dropdownContainer: {
-    marginBottom: 15,
-    zIndex: 10,
-    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
-    width: screenWidth * 0.76,
-    alignSelf: 'center',
-  },
-  dropdownButton: {
+  // header rows
+  headerRow: {paddingVertical: 8},
+  headerText: {fontSize: 16, fontWeight: '600', alignSelf: 'flex-start'},
+  // employee select
+  empSelectRow: {marginTop: 8, marginBottom: 8, alignItems: 'center'},
+  empSelectBtn: {
     width: '90%',
-    height: 38,
+    height: 44,
+    borderRadius: 12,
     borderWidth: 1,
-    flexDirection: 'row',
+    borderColor: Colors.border,
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 15,
-    alignSelf: 'center',
-    padding: 5,
-    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
-  },
-  dropdownText: {
-    marginLeft: 5,
-  },
-  dropdown: {
-    width: '90%',
-    borderWidth: 1,
-    elevation: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
     backgroundColor: '#fff',
     alignSelf: 'center',
-    borderTopWidth: 0,
-    padding: 10,
-    position: 'absolute',
-    // zIndex: 10,
-    marginTop: 53,
-    // maxHeight: 200,
-    overflow: 'scroll',
   },
-  dropdownItemText: {
-    paddingVertical: 8,
-  },
+  empSelectText: {fontSize: 15, fontWeight: '600'},
+  // month/days
   monthSelector: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginVertical: 10,
-    marginTop: screenHeight * 0.08,
-    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
-  monthText: {
-    marginHorizontal: 10,
-    fontSize: 16,
-  },
-  daysContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 15,
-    paddingHorizontal: width * 0.05,
-  },
-  timesList: {
-    alignItems: 'center',
-    padding: 5,
-  },
-  item: {
-    flexDirection: 'row',
+  monthLabel: {marginHorizontal: 10, fontSize: 15},
+  dayItem: {
     margin: 5,
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 15,
+    height: 66,
+    borderRadius: 12,
+    width: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    width: '25%',
+    paddingVertical: 8,
   },
-  itemText: {
-    marginHorizontal: 5,
-    fontSize: 16,
+  dayNumber: {fontSize: 18, fontWeight: '700'},
+  dayName: {fontSize: 12, marginTop: 6},
+  // times
+  timesWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginTop: 8,
   },
-  button: {
-    width: '80%',
-    height: 60,
+  timePill: {
+    borderRadius: 18,
+    margin: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowOffset: {width: 0, height: 3},
+    shadowRadius: 6,
+  },
+  timePillAvailable: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#eee',
+    paddingVertical: 6,
+  },
+  timePillDisabled: {backgroundColor: Colors.border},
+  timePillSelected: {
     backgroundColor: Colors.primary,
-    borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    // marginBottom: screenHeight * 0.02,
-    marginVertical: screenHeight * 0.08,
-    borderWidth: 1,
     borderColor: Colors.primary,
   },
-  buttonText: {
-    fontSize: 18,
-    color: '#fff',
+  timeText: {fontWeight: '700'},
+  timeSub: {fontSize: 11, color: '#777', marginTop: 4},
+  // actions
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 14,
   },
+  primaryBtn: {
+    width: '62%',
+    height: 56,
+    backgroundColor: Colors.primary,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryBtnText: {color: '#fff', fontWeight: '700'},
+  secondaryBtn: {
+    width: '34%',
+    height: 56,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smallText: {fontSize: 12, color: Colors.black3},
+  // employee modal
+  empModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-end',
+  },
+  empModal: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    maxHeight: height * 0.75,
+  },
+  empModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  empModalTitle: {fontSize: 16, fontWeight: '700'},
+  empRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+  },
+  empRowSelected: {backgroundColor: 'rgba(52,76,183,0.06)'},
+  empAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  empAvatarSelected: {backgroundColor: Colors.primary},
+  empInitials: {fontWeight: '700', color: Colors.text},
+  empName: {fontWeight: '700'},
+  empPosition: {fontSize: 12, color: Colors.black3},
+  empModalClose: {
+    marginTop: 12,
+    backgroundColor: Colors.primary,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  // message modal
   modal: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.1)',
     justifyContent: 'flex-end',
   },
   modal2: {
-    width: '100%',
-    borderTopLeftRadius: 50,
-    borderTopRightRadius: 50,
     backgroundColor: '#fff',
-    padding: 15,
-    maxHeight: height * 0.8,
-    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
   },
   modalHeaderContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 10,
-    marginBottom: 15,
+    width: screenWidth * 0.9,
+    marginBottom: 12,
   },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  modalButtonContainer: {
-    // flexDirection: 'row',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
+  modalTitle: {fontSize: 16, fontWeight: '600'},
+  // checkout modal
+  modalHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 55,
-  },
-  modalButton: {
-    width: '48%',
-    height: 60,
-    backgroundColor: Colors.primary,
-    borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 25,
-    borderWidth: 1,
-    borderColor: Colors.primary,
+    paddingBottom: 8,
+    marginBottom: 8,
   },
   serv: {
-    padding: 10,
+    paddingVertical: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
   },
-  serviceList: {
-    maxHeight: height * 0.3,
-  },
-  text: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  title2: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 3,
-    color: Colors.black3,
-  },
-  priceText: {
-    marginRight: 15,
-  },
+  serviceList: {width: screenWidth * 0.94, marginBottom: 8},
+  text: {fontSize: 14, fontWeight: '600'},
+  title2: {fontSize: 12, fontWeight: '700', color: Colors.black2},
+  priceText: {fontWeight: '800'},
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '95%',
-    padding: 10,
-    alignSelf: 'center',
-  },
-  paymentMethodsContainer: {
-    marginTop: 10,
     width: '100%',
+    padding: 10,
   },
-  choose: {
-    width: '90%',
-    height: 59,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignSelf: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 18,
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    marginTop: 15,
-  },
-  checkoutButtonsContainer: {
-    alignItems: 'center',
-  },
+  checkoutButtonsContainer: {alignItems: 'center'},
   confirmButton: {
     width: '90%',
-    height: 60,
+    height: 56,
     backgroundColor: Colors.primary,
-    borderRadius: 50,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 15,
-    borderWidth: 1,
-    borderColor: Colors.primary,
   },
-  selectDate: {
-    fontSize: 19,
-  },
-  item2: {
-    margin: 5,
-    height: 66,
-    // borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 5,
-    paddingVertical: 15,
-    alignItems: 'center',
-    width: 51,
-    justifyContent: 'space-between',
-  },
+  buttonText: {color: '#fff', fontWeight: '700'},
+  contentContainer: {paddingBottom: 30, backgroundColor: '#fff'},
 });
 
-export default ChangeAppointment;
+export default DateBook;
