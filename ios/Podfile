@@ -5,8 +5,6 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-
-
 platform :ios, '16.0'
 prepare_react_native_project!
 
@@ -19,6 +17,7 @@ end
 target 'Salons' do
   config = use_native_modules!
 
+  # Use static frameworks for better React Native compatibility on many projects
   use_frameworks! :linkage => :static
   $RNFirebaseAsStaticFramework = true
 
@@ -26,32 +25,39 @@ target 'Salons' do
     :path => config[:reactNativePath],
     # An absolute path to your application root.
     :app_path => "#{Pod::Config.instance.installation_root}/..",
-    :hermes_enabled => true
-
+    :hermes_enabled => true,
+    :fabric_enabled => false
   )
-  
+
+  # Add any explicit pods you need here. Example:
+  # pod 'LoaderKit', :path => '../node_modules/react-native-loader-kit'
 
   pod 'Firebase/Core', :modular_headers => true
   pod 'GoogleUtilities', :modular_headers => true
-
 
   target 'SalonsTests' do
     inherit! :complete
     # Pods for testing
   end
-
-  
 end
 
 post_install do |installer|
-  react_native_post_install(installer, config[:reactNativePath]) if defined?(react_native_post_install)
+  # Call RN post install (if present)
+  react_native_post_install(installer, config[:reactNativePath], :mac_catalyst_enabled => false) if defined?(react_native_post_install)
+
+  # Enforce iOS target and ensure CoreAudioTypes is linked
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
+      # set minimum deployment target
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+
+      # ensure CoreAudioTypes is present in OTHER_LDFLAGS
       ldf = config.build_settings['OTHER_LDFLAGS'] || '$(inherited)'
       unless ldf.to_s.include?('-framework CoreAudioTypes')
         config.build_settings['OTHER_LDFLAGS'] = "#{ldf} -framework CoreAudioTypes"
       end
+
+      # normalize OTHER_LDFLAGS (remove duplicates if it's an array)
       if config.build_settings['OTHER_LDFLAGS'].is_a?(Array)
         config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].uniq
       else
@@ -60,13 +66,3 @@ post_install do |installer|
     end
   end
 end
-      if config.build_settings['OTHER_LDFLAGS'].is_a?(Array)
-        config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].uniq
-      else
-        config.build_settings['OTHER_LDFLAGS'] = config.build_settings['OTHER_LDFLAGS'].to_s
-      end
-    end
-  end
-end
-
-
