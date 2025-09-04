@@ -3,12 +3,12 @@
   "displayName": "Salons",
   "extra": {
     "eas": {
-      "projectId": "af47e3bb-455a-404c-9197-25449e8b609a",
       "name": "Ontime",
       "slug": "ontime",
       "ios": {
         "bundleIdentifier": "com.mohamedsaad.ontime"
-      }
+      },
+      "projectId": "3e7749a6-6a04-4f23-9503-dea0fbe72997"
     }
   }
 }
