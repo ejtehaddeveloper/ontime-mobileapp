@@ -7,7 +7,9 @@ require Pod::Executable.execute_command('node', ['-p',
 
 
 
-platform :ios, '13.4'
+platform :ios, '15.0'
+require_relative '../node_modules/react-native/scripts/react_native_pods'
+
 prepare_react_native_project!
 
 linkage = ENV['USE_FRAMEWORKS']
@@ -24,29 +26,26 @@ target 'Salons' do
 
   use_react_native!(
     :path => config[:reactNativePath],
-    # An absolute path to your application root.
     :app_path => "#{Pod::Config.instance.installation_root}/..",
     :hermes_enabled => true
-
   )
-  
 
   pod 'Firebase/Core', :modular_headers => true
   pod 'GoogleUtilities', :modular_headers => true
 
-
   target 'SalonsTests' do
     inherit! :complete
-    # Pods for testing
   end
 
   post_install do |installer|
-    # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
-    react_native_post_install(
-      installer,
-      config[:reactNativePath],
-      :mac_catalyst_enabled => false,
-      # :ccache_enabled => true
-    )
+    # first call RN's post install (important)
+    react_native_post_install(installer, config[:reactNativePath], :mac_catalyst_enabled => false)
+
+    # enforce iOS deployment target for all pods (change '15.0' if you need a different minimum)
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      end
+    end
   end
 end
