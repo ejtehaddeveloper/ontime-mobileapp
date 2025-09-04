@@ -1,18 +1,12 @@
 import React from 'react';
-import {View, StyleSheet, Dimensions} from 'react-native';
-import LoaderKit from 'react-native-loader-kit';
+import {View, StyleSheet, Dimensions, Loader} from 'react-native';
 import {Colors} from '../constants';
 
 const Loading = () => {
   return (
     <View style={styles.wrapper}>
       <View style={styles.container}>
-        <LoaderKit
-          style={{width: 50, height: 50}}
-          name="BallSpinFadeLoader" // Loader #29
-          color={Colors.primary}
-          size={50}
-        />
+        <Loader visible={true} color={Colors.primary} size="large" />
       </View>
     </View>
   );
