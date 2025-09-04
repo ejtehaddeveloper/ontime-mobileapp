@@ -1,4 +1,14 @@
 {
   "name": "Salons",
-  "displayName": "Salons"
+  "displayName": "Salons",
+  "extra": {
+    "eas": {
+      "projectId": "af47e3bb-455a-404c-9197-25449e8b609a",
+      "name": "Ontime",
+      "slug": "ontime",
+      "ios": {
+        "bundleIdentifier": "com.mohamedsaad.ontime"
+      }
+    }
+  }
 }
