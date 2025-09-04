@@ -42,8 +42,8 @@ target 'Salons' do
 end
 
 post_install do |installer|
-  # Call RN post install (if present)
-  react_native_post_install(installer, config[:reactNativePath], :mac_catalyst_enabled => false) if defined?(react_native_post_install)
+  # Call RN post install (if present). Do NOT reference `config` here.
+  react_native_post_install(installer) if defined?(react_native_post_install)
 
   # Enforce iOS target and ensure CoreAudioTypes is linked
   installer.pods_project.targets.each do |target|
