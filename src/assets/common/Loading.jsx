@@ -1,16 +1,14 @@
 import React from 'react';
-import {View, StyleSheet, Dimensions, Loader} from 'react-native';
+import {View, StyleSheet, Dimensions, ActivityIndicator} from 'react-native';
 import {Colors} from '../constants';
 
-const Loading = () => {
-  return (
-    <View style={styles.wrapper}>
-      <View style={styles.container}>
-        <Loader visible={true} color={Colors.primary} size="large" />
-      </View>
+const Loading = () => (
+  <View style={styles.wrapper} pointerEvents="none">
+    <View style={styles.container}>
+      <ActivityIndicator size="large" color={Colors.primary} />
     </View>
-  );
-};
+  </View>
+);
 
 const styles = StyleSheet.create({
   wrapper: {
@@ -19,8 +17,8 @@ const styles = StyleSheet.create({
     left: 0,
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)', // optional: dim effect
-    zIndex: 9999, // keep it above other components
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    zIndex: 9999,
     justifyContent: 'center',
     alignItems: 'center',
   },
