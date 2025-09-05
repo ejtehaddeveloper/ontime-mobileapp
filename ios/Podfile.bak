@@ -24,15 +24,16 @@ target 'Salons' do
 
   use_react_native!(
     :path => config[:reactNativePath],
-    # An absolute path to your application root.
     :app_path => "#{Pod::Config.instance.installation_root}/..",
-    :hermes_enabled => true
-
+    :hermes_enabled => true,
+    :fabric_enabled => false,
+    :new_arch_enabled => false
   )
   
 
   pod 'Firebase/Core', :modular_headers => true
   pod 'GoogleUtilities', :modular_headers => true
+  pod 'RNScreens', :path => '../node_modules/react-native-screens'
 
 
   target 'SalonsTests' do
