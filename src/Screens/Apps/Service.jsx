@@ -1,8 +1,8 @@
+/* eslint-disable react/no-unstable-nested-components */
 /* eslint-disable react-native/no-inline-styles */
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   useContext,
@@ -19,7 +19,6 @@ import {
   Modal,
   ActivityIndicator,
   SafeAreaView,
-  Dimensions,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -35,16 +34,20 @@ import i18n from '../../assets/locales/i18';
 import {useTranslation} from 'react-i18next';
 import hostImge from '../../context/hostImge';
 
-// in-memory session cache keyed by salonId
-const inMemoryCache = new Map();
+// ======= Persisted global cache to survive HMR / dev reloads =======
+const CACHE_GLOBAL_KEY = '__PIXELENGINE_IN_MEMORY_CACHE_V1__';
+const inMemoryCache =
+  (typeof global !== 'undefined' && global[CACHE_GLOBAL_KEY]) || new Map();
+if (typeof global !== 'undefined') {
+  global[CACHE_GLOBAL_KEY] = inMemoryCache;
+}
+// ===================================================================
 
 // how many services to prewarm subservices for (first N)
 const PREWARM_COUNT = 3;
 
 // fallback app logo - adjust path if you store it elsewhere
 const appLogo = require('../../assets/images/logo.jpg');
-
-const {width: SCREEN_WIDTH, height: SCREEN_HEIGHT} = Dimensions.get('window');
 
 const Service = ({route}) => {
   const {t} = useTranslation();
@@ -75,14 +78,20 @@ const Service = ({route}) => {
     };
   }, []);
 
+  // ensure consistent cache key
+  const cacheKey = String(salonId);
+
   // initial load (salon details + categories + initial services)
   useEffect(() => {
     let cancelled = false;
 
     const loadFromCache = () => {
-      const cached = inMemoryCache.get(String(salonId));
-      if (!cached) return false;
+      const cached = inMemoryCache.get(cacheKey);
+      if (!cached) {
+        return false;
+      }
       if (!cancelled && mountedRef.current) {
+        console.log('[Service] loadFromCache - found cache for', cacheKey);
         setSalonDetails(cached.salonDetails ?? null);
         setCategories(
           Array.isArray(cached.categories) ? cached.categories : [],
@@ -99,13 +108,16 @@ const Service = ({route}) => {
           [];
         setServices(Array.isArray(svcs) ? svcs : []);
         setErrorMsg(cached.errorMsg ?? '');
+        setLoading(false); // show cached data immediately
       }
       return true;
     };
 
     const fetchAndCache = async (categoryUuid = null, isInitial = false) => {
       try {
-        if (isInitial) setLoading(true);
+        if (isInitial) {
+          setLoading(true);
+        }
 
         const [salonResp, categoriesResp] = await Promise.all([
           getSalons(salonId),
@@ -127,7 +139,7 @@ const Service = ({route}) => {
         }
 
         if (!cancelled && mountedRef.current) {
-          const cached = inMemoryCache.get(String(salonId)) || {};
+          const cached = inMemoryCache.get(cacheKey) || {};
           const newCache = {
             ...cached,
             salonDetails: incomingSalonDetails,
@@ -139,24 +151,35 @@ const Service = ({route}) => {
             selectedCategory: activeUuid,
             lastFetchedAt: Date.now(),
           };
-          inMemoryCache.set(String(salonId), newCache);
+          inMemoryCache.set(cacheKey, newCache);
 
           setSalonDetails(incomingSalonDetails);
           setCategories(incomingCategories);
           setSelectedCategory(activeUuid);
           setServices(servicesResp);
           setErrorMsg('');
+          console.log('[Service] fetchAndCache - cached set for', cacheKey);
         }
       } catch (err) {
         console.log('Service fetch error', err);
-        if (!cancelled && mountedRef.current)
+        if (!cancelled && mountedRef.current) {
           setErrorMsg(t('There is no services right now'));
+        }
       } finally {
-        if (!cancelled && mountedRef.current) setLoading(false);
+        if (!cancelled && mountedRef.current) {
+          setLoading(false);
+        }
       }
     };
 
+    console.log(
+      '[Service] initial load, cacheKey=',
+      cacheKey,
+      'cache keys=',
+      Array.from(inMemoryCache.keys()),
+    );
     const hadCache = loadFromCache();
+    // If we had cache, still attempt background fetch to refresh; otherwise fetch with isInitial true
     fetchAndCache(hadCache ? undefined : null, !hadCache);
 
     return () => {
@@ -183,22 +206,24 @@ const Service = ({route}) => {
 
       setCategoryLoading(true);
       try {
-        const cached = inMemoryCache.get(String(salonId)) || {};
+        const cached = inMemoryCache.get(cacheKey) || {};
         // use cache if present
         if (
           cached.servicesForCategory &&
           Array.isArray(cached.servicesForCategory[catUuid])
         ) {
-          setServices(cached.servicesForCategory[catUuid]);
+          const svcFromCache = cached.servicesForCategory[catUuid];
+          setServices(svcFromCache);
           setSelectedCategory(catUuid);
           setErrorMsg('');
         } else {
+          // fetch from network
           const svc = (await getServices(salonId, catUuid)) ?? [];
           setServices(svc);
           setSelectedCategory(catUuid);
           setErrorMsg('');
 
-          inMemoryCache.set(String(salonId), {
+          inMemoryCache.set(cacheKey, {
             ...cached,
             servicesForCategory: {
               ...(cached.servicesForCategory || {}),
@@ -207,15 +232,23 @@ const Service = ({route}) => {
             selectedCategory: catUuid,
             lastFetchedAt: Date.now(),
           });
+          console.log(
+            '[Service] services cached for category',
+            catUuid,
+            'salon',
+            cacheKey,
+          );
         }
 
         // PREWARM: fetch subservices for first PREWARM_COUNT services (only if not cached)
-        const cacheAfter = inMemoryCache.get(String(salonId)) || {};
+        const cacheAfter = inMemoryCache.get(cacheKey) || {};
         const svcList =
           cacheAfter.servicesForCategory &&
           cacheAfter.servicesForCategory[catUuid]
             ? cacheAfter.servicesForCategory[catUuid]
-            : services;
+            : Array.isArray(services)
+            ? services
+            : [];
 
         if (Array.isArray(svcList) && svcList.length > 0) {
           const toPrewarm = svcList
@@ -226,8 +259,9 @@ const Service = ({route}) => {
           const missing = [];
           const cachedSubMap = cacheAfter.subServicesForService || {};
           toPrewarm.forEach(uuidToCheck => {
-            if (!Array.isArray(cachedSubMap[uuidToCheck]))
+            if (!Array.isArray(cachedSubMap[uuidToCheck])) {
               missing.push(uuidToCheck);
+            }
           });
 
           if (missing.length > 0) {
@@ -238,16 +272,25 @@ const Service = ({route}) => {
               );
               const allSubs = await Promise.all(prePromises);
               const newSubMap = {...(cacheAfter.subServicesForService || {})};
+              // ensure we operate on a fresh copy of servicesForCategory
+              cacheAfter.servicesForCategory =
+                cacheAfter.servicesForCategory || {};
+              const svcArr = cacheAfter.servicesForCategory[catUuid] || svcList;
+
               missing.forEach((m, idx) => {
-                newSubMap[m] = Array.isArray(allSubs[idx]) ? allSubs[idx] : [];
-                // compute min/max price/duration for the corresponding service in svcList (merge into services)
-                const prices = newSubMap[m]
+                const subsForM = Array.isArray(allSubs[idx])
+                  ? allSubs[idx]
+                  : [];
+                newSubMap[m] = subsForM;
+
+                // compute min/max price/duration for the corresponding service in svcArr (merge into services)
+                const prices = subsForM
                   .map(x => {
                     const p = parseFloat(x.price);
                     return Number.isFinite(p) ? p : null;
                   })
                   .filter(Boolean);
-                const durations = newSubMap[m]
+                const durations = subsForM
                   .map(x => {
                     const d = parseInt(x.duration, 10);
                     return Number.isFinite(d) ? d : null;
@@ -262,11 +305,6 @@ const Service = ({route}) => {
                   ? Math.max(...durations)
                   : null;
 
-                // update cached services entry for that category
-                cacheAfter.servicesForCategory =
-                  cacheAfter.servicesForCategory || {};
-                const svcArr =
-                  cacheAfter.servicesForCategory[catUuid] || svcList;
                 cacheAfter.servicesForCategory[catUuid] = svcArr.map(s => {
                   if (s.uuid === m) {
                     return {
@@ -282,7 +320,7 @@ const Service = ({route}) => {
               });
 
               // write back cache
-              inMemoryCache.set(String(salonId), {
+              inMemoryCache.set(cacheKey, {
                 ...cacheAfter,
                 subServicesForService: newSubMap,
                 servicesForCategory: cacheAfter.servicesForCategory,
@@ -299,6 +337,10 @@ const Service = ({route}) => {
                       : prev;
                   return Array.isArray(arr) ? arr : prev;
                 });
+                console.log(
+                  '[Service] prewarm updated services for category',
+                  catUuid,
+                );
               }
             } catch (err) {
               console.log('prewarm subservices error', err);
@@ -312,7 +354,10 @@ const Service = ({route}) => {
         setCategoryLoading(false);
       }
     },
-    [salonId, selectedCategory, services, t],
+    // note: we intentionally do not include 'services' here to avoid stomping on the value;
+    // we read services only as a fallback. This mirrors original behavior.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [salonId, selectedCategory, t, cacheKey],
   );
 
   // open datebook
@@ -334,10 +379,12 @@ const Service = ({route}) => {
   // open subservices modal (cached first) — improved: writes cache and uses prewarm map
   const handleOpenSubServices = useCallback(
     async serviceUuid => {
-      if (!serviceUuid) return;
+      if (!serviceUuid) {
+        return;
+      }
       setSubServiceLoading(true);
       try {
-        const cached = inMemoryCache.get(String(salonId)) || {};
+        const cached = inMemoryCache.get(cacheKey) || {};
         const cachedList =
           cached.subServicesForService &&
           cached.subServicesForService[serviceUuid];
@@ -350,7 +397,7 @@ const Service = ({route}) => {
         const subs = (await getSubServices(serviceUuid)) ?? [];
         setSubServices(subs);
         setShowSubModal(true);
-        inMemoryCache.set(String(salonId), {
+        inMemoryCache.set(cacheKey, {
           ...cached,
           subServicesForService: {
             ...(cached.subServicesForService || {}),
@@ -358,6 +405,12 @@ const Service = ({route}) => {
           },
           lastFetchedAt: Date.now(),
         });
+        console.log(
+          '[Service] subservices cached for',
+          serviceUuid,
+          'salon',
+          cacheKey,
+        );
       } catch (err) {
         console.log('Error fetching subservices', err);
         setSubServices([]);
@@ -366,7 +419,7 @@ const Service = ({route}) => {
         setSubServiceLoading(false);
       }
     },
-    [salonId],
+    [cacheKey],
   );
 
   // stable item renderer (no async inside)

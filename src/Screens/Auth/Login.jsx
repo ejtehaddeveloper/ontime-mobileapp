@@ -19,46 +19,13 @@ import i18n from '../../assets/locales/i18';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {CountryPicker} from 'react-native-country-codes-picker';
 
-const Login = () => {
-  const logo = require('../../assets/images/logo2.png');
+const logo = require('../../assets/images/logo2.png');
 
+const Login = () => {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
-
   const navigation = useNavigation();
-
-  const handleGuest = async () => {
-    setErrorText('');
-    if (!phone) {
-      setErrorText(t('The phone number is required'));
-    }
-    setLoading(true);
-    try {
-      const fullPhoneNumber = `${country.dial_code}${phone}`;
-      const response = await Loginuser(fullPhoneNumber);
-      if (response) {
-        navigation.navigate('OTP', {phone});
-      }
-    } catch (error) {
-      console.log('signup error', error);
-      if (error?.phone_number[0].includes('User not found.')) {
-        setErrorText(t('This user is not found'));
-      } else if (
-        error?.phone_number[0].includes('The selected phone number is invalid.')
-      ) {
-        setErrorText(t('This user is not found'));
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoback = () => {
-    navigation.goBack();
-  };
-
-  const [isVisible, setIsVisible] = useState(false);
 
   // Set default country to Qatar (+974)
   const [country, setCountry] = useState({
@@ -67,9 +34,66 @@ const Login = () => {
     code: 'QA',
   });
 
+  const [isVisible, setIsVisible] = useState(false);
+
   const handleCountrySelect = countries => {
-    setCountry(countries);
+    if (countries) setCountry(countries);
     setIsVisible(false);
+  };
+
+  const handleGuest = async () => {
+    setErrorText('');
+
+    // validate phone (basic)
+    const trimmed = (phone || '').trim();
+    if (!trimmed) {
+      setErrorText(t('The phone number is required'));
+      return;
+    }
+
+    // optional: further validation (length, digits only) before proceeding
+    // if (!/^\d+$/.test(trimmed)) { setErrorText(t('Enter a valid phone')); return; }
+
+    setLoading(true);
+    try {
+      const dial = country?.dial_code ?? '+974';
+      const fullPhoneNumber = `${dial}${trimmed}`;
+
+      console.log('login phone:', fullPhoneNumber);
+
+      const response = await Loginuser(fullPhoneNumber);
+      if (response) {
+        navigation.navigate('OTP', {phone: trimmed});
+      } else {
+        // handle unexpected response shape
+        setErrorText(t('Something went wrong, try again'));
+      }
+    } catch (error) {
+      console.log('signup error', error);
+
+      // safe checks using optional chaining
+      if (error?.phone_number?.[0]?.includes('User not found.')) {
+        setErrorText(t('This user is not found'));
+      } else if (
+        error?.phone_number?.[0]?.includes(
+          'The selected phone number is invalid.',
+        )
+      ) {
+        setErrorText(t('This user is not found'));
+      } else if (typeof error === 'string') {
+        setErrorText(error);
+      } else if (error?.message) {
+        setErrorText(error.message);
+      } else {
+        setErrorText(t('An unexpected error occurred'));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoback = () => {
+    navigation.goBack();
   };
 
   return (
@@ -84,17 +108,17 @@ const Login = () => {
             justifyContent: 'space-between',
             alignSelf: 'flex-start',
           }}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity
+            onPress={handleGoback}
+            hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}>
             <Ionicons
               name={i18n.language === 'en' ? 'arrow-back' : 'arrow-forward'}
               size={25}
-              // color={Colors.primary}
-              onPress={handleGoback}
-              hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}
             />
           </TouchableOpacity>
           <Text style={styles.header}>{t('Login')}</Text>
         </View>
+
         <ScrollView
           contentContainerStyle={{justifyContent: 'center', marginTop: 20}}>
           <View
@@ -103,7 +127,7 @@ const Login = () => {
               justifyContent: 'center',
               marginTop: 30,
             }}>
-            <Image source={logo} style={styles.image} />
+            <Image source={logo} style={styles.image} resizeMode="contain" />
           </View>
 
           <View>
@@ -119,7 +143,8 @@ const Login = () => {
                   direction: 'ltr',
                 },
               ]}>
-              <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <View
+                style={{flexDirection: 'row', alignItems: 'center', flex: 1}}>
                 <Text>{country ? `${country.dial_code}` : '+974'}</Text>
 
                 <View
@@ -144,17 +169,21 @@ const Login = () => {
                   style={{flex: 1}}
                 />
               </View>
-              6
+
+              {/* If CountryPicker causes issues on iOS, comment this out while debugging.
+                  Also ensure you ran `cd ios && pod install` after installing the library. */}
               <CountryPicker
                 show={isVisible}
                 pickerButtonOnPress={handleCountrySelect}
                 style={{modal: {backgroundColor: 'white', marginTop: 200}}}
               />
             </View>
+
             <Text style={{color: 'red', marginLeft: 15, fontSize: 12}}>
               {errorText}
             </Text>
           </View>
+
           {loading ? (
             <Loading />
           ) : (
@@ -208,16 +237,6 @@ const styles = StyleSheet.create({
   image: {
     width: 150,
     height: 250,
-  },
-  title: {
-    fontSize: 8,
-    fontWeight: '400',
-  },
-  title2: {
-    fontSize: 35,
-    marginTop: -15,
-    color: Colors.primary,
-    fontFamily: 'Allura-Regular',
   },
   header: {
     fontSize: 25,

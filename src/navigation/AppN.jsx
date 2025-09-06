@@ -60,15 +60,20 @@ function MainTabNavigator() {
 
   // Get bottom safe area inset using react-native-safe-area-context
   const insets = useSafeAreaInsets();
-
+  console.log('Bottom inset:', insets.bottom);
+  useEffect(() => {
+    console.log('Current language:', i18n.language);
+    console.log('Bottom inset changed:', insets.bottom);
+  }, [insets.bottom]);
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
           backgroundColor: '#fff',
-          height: 70 + insets.bottom,
-          paddingHorizontal: Platform.OS === 'ios' ? 29 : 15,
+          height: 60,
+          paddingBottom: insets.bottom,
+          paddingHorizontal: Platform.OS === 'ios' ? 5 : 5,
         },
       }}>
       {[
@@ -118,13 +123,13 @@ function MainTabNavigator() {
                     position: 'absolute',
                     right: -5,
                     top: -2,
-                    backgroundColor: 'red',
                     minWidth: 14,
                     height: 14,
                     borderRadius: 7,
                     justifyContent: 'center',
                     alignItems: 'center',
                     paddingHorizontal: 2,
+                    backgroundColor: 'red',
                   }}>
                   <Text
                     style={{color: 'white', fontSize: 10, fontWeight: 'bold'}}>
@@ -178,23 +183,27 @@ function MainTabNavigator() {
   );
 }
 
+import {SafeAreaProvider} from 'react-native-safe-area-context';
+
 const AppN = () => {
   return (
-    <Stack.Navigator screenOptions={{headerShown: false}}>
-      <Stack.Screen name="MainTab" component={MainTabNavigator} />
-      {[
-        {name: 'Salon', component: Salon},
-        {name: 'Service', component: Service},
-        {name: 'DateBook', component: DateBook},
-        {name: 'BookingDetails', component: BookingDetails},
-        {name: 'Cart', component: Cart},
-        {name: 'View_all', component: View_all},
-        {name: 'View_all2', component: View_all2},
-        {name: 'ChangeAppointment', component: ChangeAppointment},
-      ].map(({name, component}) => (
-        <Stack.Screen key={name} name={name} component={component} />
-      ))}
-    </Stack.Navigator>
+    <SafeAreaProvider>
+      <Stack.Navigator screenOptions={{headerShown: false}}>
+        <Stack.Screen name="MainTab" component={MainTabNavigator} />
+        {[
+          {name: 'Salon', component: Salon},
+          {name: 'Service', component: Service},
+          {name: 'DateBook', component: DateBook},
+          {name: 'BookingDetails', component: BookingDetails},
+          {name: 'Cart', component: Cart},
+          {name: 'View_all', component: View_all},
+          {name: 'View_all2', component: View_all2},
+          {name: 'ChangeAppointment', component: ChangeAppointment},
+        ].map(({name, component}) => (
+          <Stack.Screen key={name} name={name} component={component} />
+        ))}
+      </Stack.Navigator>
+    </SafeAreaProvider>
   );
 };
 
