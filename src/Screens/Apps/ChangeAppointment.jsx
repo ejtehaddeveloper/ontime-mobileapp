@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react-native/no-inline-styles */
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
@@ -9,7 +10,6 @@ import {
   Modal,
   Pressable,
   Dimensions,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
 import {CommonActions, useNavigation} from '@react-navigation/native';
@@ -30,6 +30,7 @@ import {t} from 'i18next';
 import i18n from '../../assets/locales/i18';
 import moment from 'moment';
 import 'moment/locale/ar';
+import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 
 // Screen dims
 const {width, height} = Dimensions.get('window');
@@ -65,13 +66,25 @@ const arabicMonths = [
 ];
 
 /**
- * DateBook — improved & 3-column time grid
+ * ChangeBook — improved & 3-column time grid
  * Fix: validation now uses a ref (selectedDateRef) so validation can't miss a freshly-selected time.
+ * Also: safe-area aware layout + fixes for iOS FlatList blank render.
  */
 
-const DateBook = ({route}) => {
+const ChangeBook = ({route}) => {
   const {salonId, serviceID, isSubService} = route.params || {};
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const H_PADDING = 20; // matches styles.container.paddingHorizontal
+
+  // compute content width taking safe-area insets into account
+  const containerWidth = useMemo(
+    () =>
+      Math.floor(
+        screenWidth - H_PADDING * 2 - (insets.left ?? 0) - (insets.right ?? 0),
+      ),
+    [insets.left, insets.right],
+  );
 
   // selection / UI state
   const [selectedDate, setSelectedDate] = useState(null); // selected start_time string e.g. "09:00"
@@ -207,17 +220,17 @@ const DateBook = ({route}) => {
   // date string YYYY-MM-DD
   const date = `${currentYear}-${currentMonth}-${selectedDay}`;
 
-  // compute pill width for 3 columns (responsive)
+  // grid math (3 columns)
+  const gapH = 12;
+  const cols = 3;
   const pillWidth = useMemo(() => {
-    // use 90% of screenWidth for content, subtract gaps (3 items => 2 gaps of 16)
-    const containerWidth = Math.floor(screenWidth * 0.9);
-    const gaps = 16 * 2;
-    const raw = Math.floor((containerWidth - gaps) / 3);
-    return Math.max(88, raw); // don't go too small
-  }, []);
-
-  // compute height to keep pills consistent (slightly shorter than width)
-  const pillHeight = Math.round(pillWidth * 0.55);
+    const raw = Math.floor((containerWidth - gapH * (cols + 1)) / cols);
+    return Math.max(88, raw);
+  }, [containerWidth]);
+  const pillHeight = useMemo(
+    () => Math.max(52, Math.floor(pillWidth * 0.55)),
+    [pillWidth],
+  );
 
   // helper: clear selection (both state + ref)
   const clearSelection = useCallback(() => {
@@ -230,17 +243,14 @@ const DateBook = ({route}) => {
   useEffect(() => {
     if (!selectedDay) return;
 
-    // build cache key
     const key = `${empSelectedId ?? 'any'}|${date}`;
 
-    // if cached, apply immediately and skip network
     const cached = timeCacheRef.current.get(key);
     if (cached) {
       setTimeSlots(cached);
       setErrorT('');
       setLoadTime(false);
 
-      // ensure previously selected time is still valid for this day
       const currently = selectedDateRef.current;
       if (currently) {
         const found = cached.some(
@@ -251,7 +261,6 @@ const DateBook = ({route}) => {
       return;
     }
 
-    // otherwise fetch
     let cancelled = false;
     const myFetchId = ++fetchIdRef.current;
 
@@ -268,11 +277,9 @@ const DateBook = ({route}) => {
         );
         const list = Array.isArray(res) ? res : [];
         if (cancelled || fetchIdRef.current !== myFetchId) return;
-        // store in cache and set state
         timeCacheRef.current.set(key, list);
         if (mountedRef.current) {
           setTimeSlots(list);
-          // ensure selected time is still valid against new list
           const currently = selectedDateRef.current;
           if (currently) {
             const found = list.some(
@@ -301,7 +308,6 @@ const DateBook = ({route}) => {
     };
 
     doFetch();
-
     return () => {
       cancelled = true;
     };
@@ -348,7 +354,6 @@ const DateBook = ({route}) => {
             setEmpSelectedId(item.id);
             setEmpSelectedName(item.name);
             setEmpModalVisible(false);
-            // times will be fetched by effect
           }}>
           <View
             style={[styles.empAvatar, selected && styles.empAvatarSelected]}>
@@ -379,10 +384,9 @@ const DateBook = ({route}) => {
     [empSelectedId],
   );
 
-  // Times rendering: prettier pill UI (returns element)
+  // Times rendering: pill
   const renderTimeSlot = useCallback(
     slot => {
-      // hide not-available times (user asked to not show them)
       if (!slot || !slot.available) return null;
 
       const isSelected = selectedDateRef.current === slot.start_time;
@@ -391,7 +395,6 @@ const DateBook = ({route}) => {
         .format('hh:mm a');
 
       const onPress = () => {
-        // update both state and ref synchronously
         setSelectedDate(slot.start_time);
         selectedDateRef.current = slot.start_time;
         setSelectedEndDate(slot.end_time);
@@ -419,7 +422,6 @@ const DateBook = ({route}) => {
 
   // booking / cart flows (stabilized & memoized)
   const handleGoToCheckout = useCallback(async () => {
-    // use ref first (synchronous), fallback to state
     const currentSelected = selectedDateRef.current || selectedDate;
     if (!currentSelected) {
       Pop_up(1);
@@ -592,10 +594,9 @@ const DateBook = ({route}) => {
     () => empSelectedName || t('anyone'),
     [empSelectedName],
   );
-
   const monthsToDisplay = i18n.language === 'ar' ? arabicMonths : months;
 
-  // render header as part of vertical FlatList's ListHeaderComponent
+  // List header
   const ListHeaderComponent = useCallback(() => {
     return (
       <View>
@@ -603,7 +604,7 @@ const DateBook = ({route}) => {
           <Text style={styles.headerText}>{t('Select Your Date')}</Text>
         </View>
 
-        {/* Employee selector: button opens modal */}
+        {/* Employee selector */}
         <View style={styles.empSelectRow}>
           <TouchableOpacity
             style={styles.empSelectBtn}
@@ -674,8 +675,7 @@ const DateBook = ({route}) => {
                     {backgroundColor: isSelected ? Colors.primary : '#fff'},
                   ]}
                   onPress={() => {
-                    if (selectedDay === item.day) return; // no re-fetch if same day
-                    // when changing day, clear previous time selection (prevent stale validation)
+                    if (selectedDay === item.day) return;
                     clearSelection();
                     setSelectedDay(item.day);
                   }}>
@@ -702,7 +702,10 @@ const DateBook = ({route}) => {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{paddingVertical: 8}}
-            style={{width: screenWidth * 0.9, alignSelf: 'center'}}
+            style={{width: containerWidth, alignSelf: 'center'}}
+            extraData={selectedDay}
+            initialNumToRender={10}
+            removeClippedSubviews={false}
           />
         </View>
 
@@ -719,11 +722,20 @@ const DateBook = ({route}) => {
     currentYear,
     monthsToDisplay,
     clearSelection,
+    containerWidth,
   ]);
 
   // main screen render
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[
+        styles.container,
+        {
+          paddingLeft: H_PADDING + (insets.left ?? 0),
+          paddingRight: H_PADDING + (insets.right ?? 0),
+        },
+      ]}
+      edges={['top', 'left', 'right']}>
       <View style={styles.salonInfo}>
         <Ionicons
           name={i18n.language === 'en' ? 'arrow-back' : 'arrow-forward'}
@@ -736,7 +748,7 @@ const DateBook = ({route}) => {
         <Loading />
       ) : (
         <FlatList
-          data={[]} // empty; all content sits in ListHeaderComponent + below
+          data={[{key: 'header'}]} // tiny non-empty data to make ListHeaderComponent reliable on iOS
           ListHeaderComponent={
             <>
               {ListHeaderComponent()}
@@ -757,7 +769,7 @@ const DateBook = ({route}) => {
                   style={{marginTop: 20}}
                 />
               ) : (
-                <View style={styles.timesWrap}>
+                <View style={[styles.timesWrap, {width: '100%'}]}>
                   {timeSlots.filter(s => s && s.available).length === 0 ? (
                     <Text
                       style={{
@@ -805,8 +817,10 @@ const DateBook = ({route}) => {
               </View>
             </>
           }
-          keyExtractor={() => 'k'}
+          keyExtractor={item => String(item.key)}
           contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
+          extraData={[timeSlots, selectedDay, selectedDate]}
         />
       )}
 
@@ -836,6 +850,8 @@ const DateBook = ({route}) => {
               ItemSeparatorComponent={() => <View style={{height: 8}} />}
               showsVerticalScrollIndicator={false}
               style={{maxHeight: height * 0.6}}
+              extraData={empSelectedId}
+              removeClippedSubviews={false}
             />
 
             <TouchableOpacity
@@ -855,7 +871,6 @@ const DateBook = ({route}) => {
         transparent
         animationType="fade"
         onRequestClose={() => setIsVisibleMsg(false)}>
-        {/* Centered overlay: both vertically and horizontally centered */}
         <Pressable
           style={[
             styles.modal,
@@ -906,7 +921,11 @@ const DateBook = ({route}) => {
               <Loading />
             ) : (
               <>
-                <View style={styles.modalHeaderContainer}>
+                <View
+                  style={[
+                    styles.modalHeaderContainer,
+                    {width: containerWidth},
+                  ]}>
                   <Text style={styles.modalTitle}>{t('Checkout')}</Text>
                   <Ionicons
                     name="close-outline"
@@ -962,7 +981,8 @@ const DateBook = ({route}) => {
                     </View>
                   )}
                   keyExtractor={item => String(item.cart_item_id)}
-                  style={styles.serviceList}
+                  style={[styles.serviceList, {width: containerWidth}]}
+                  removeClippedSubviews={false}
                 />
 
                 {cart.length > 0 && (
@@ -1164,25 +1184,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    width: screenWidth * 0.9,
+    width: '100%',
     marginBottom: 12,
   },
   modalTitle: {fontSize: 16, fontWeight: '600'},
-  // checkout modal
-  modalHeaderContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: 8,
-    marginBottom: 8,
-  },
   serv: {
     paddingVertical: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
   },
-  serviceList: {width: screenWidth * 0.94, marginBottom: 8},
+  serviceList: {width: '100%', marginBottom: 8},
   text: {fontSize: 14, fontWeight: '600'},
   title2: {fontSize: 12, fontWeight: '700', color: Colors.black2},
   priceText: {fontWeight: '800'},
@@ -1205,4 +1217,4 @@ const styles = StyleSheet.create({
   contentContainer: {paddingBottom: 30, backgroundColor: '#fff'},
 });
 
-export default DateBook;
+export default ChangeBook;

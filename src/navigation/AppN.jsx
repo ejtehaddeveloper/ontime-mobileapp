@@ -71,8 +71,8 @@ function MainTabNavigator() {
         headerShown: false,
         tabBarStyle: {
           backgroundColor: '#fff',
-          height: 60,
-          paddingBottom: insets.bottom,
+          height: 65,
+          paddingVertical: insets.bottom + 25,
           paddingHorizontal: Platform.OS === 'ios' ? 5 : 5,
         },
       }}>

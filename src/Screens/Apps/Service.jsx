@@ -19,6 +19,8 @@ import {
   Modal,
   ActivityIndicator,
   SafeAreaView,
+  Platform,
+  InteractionManager,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -78,8 +80,25 @@ const Service = ({route}) => {
     };
   }, []);
 
+  // FlatList ref + optional remount key
+  const flatRef = useRef(null);
+  const [listKey, setListKey] = useState(0);
+
+  // small helper to nudge list layout on iOS
+  const nudgeFlatListLayout = useCallback(() => {
+    if (Platform.OS === 'ios') {
+      requestAnimationFrame(() => {
+        flatRef.current?.scrollToOffset?.({offset: 0, animated: false});
+      });
+    }
+  }, []);
+
   // ensure consistent cache key
   const cacheKey = String(salonId);
+
+  // pending navigation ref used when we need to close modal first then navigate
+  // shape: { uuid: string, isSub: boolean } or null
+  const pendingNavRef = useRef(null);
 
   // initial load (salon details + categories + initial services)
   useEffect(() => {
@@ -91,10 +110,9 @@ const Service = ({route}) => {
         return false;
       }
       if (!cancelled && mountedRef.current) {
-        console.log('[Service] loadFromCache - found cache for', cacheKey);
         setSalonDetails(cached.salonDetails ?? null);
         setCategories(
-          Array.isArray(cached.categories) ? cached.categories : [],
+          Array.isArray(cached.categories) ? [...cached.categories] : [],
         );
         const initialCat =
           cached.selectedCategory ??
@@ -106,9 +124,10 @@ const Service = ({route}) => {
           (cached.servicesForCategory &&
             cached.servicesForCategory[initialCat]) ||
           [];
-        setServices(Array.isArray(svcs) ? svcs : []);
+        setServices(Array.isArray(svcs) ? [...svcs] : []);
         setErrorMsg(cached.errorMsg ?? '');
-        setLoading(false); // show cached data immediately
+        setLoading(false);
+        nudgeFlatListLayout();
       }
       return true;
     };
@@ -154,11 +173,13 @@ const Service = ({route}) => {
           inMemoryCache.set(cacheKey, newCache);
 
           setSalonDetails(incomingSalonDetails);
-          setCategories(incomingCategories);
+          setCategories(
+            Array.isArray(incomingCategories) ? [...incomingCategories] : [],
+          );
           setSelectedCategory(activeUuid);
-          setServices(servicesResp);
+          setServices(Array.isArray(servicesResp) ? [...servicesResp] : []);
           setErrorMsg('');
-          console.log('[Service] fetchAndCache - cached set for', cacheKey);
+          nudgeFlatListLayout();
         }
       } catch (err) {
         console.log('Service fetch error', err);
@@ -172,21 +193,13 @@ const Service = ({route}) => {
       }
     };
 
-    console.log(
-      '[Service] initial load, cacheKey=',
-      cacheKey,
-      'cache keys=',
-      Array.from(inMemoryCache.keys()),
-    );
     const hadCache = loadFromCache();
-    // If we had cache, still attempt background fetch to refresh; otherwise fetch with isInitial true
     fetchAndCache(hadCache ? undefined : null, !hadCache);
 
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [salonId, uuid, isAuth]);
+  }, [salonId, uuid, cacheKey, nudgeFlatListLayout, t]);
 
   // category selection — fetch services and prewarm subservices for first N
   const handleCategorySelect = useCallback(
@@ -196,8 +209,6 @@ const Service = ({route}) => {
         setServices([]);
         return;
       }
-
-      // toggle off if same
       if (selectedCategory === catUuid) {
         setSelectedCategory(null);
         setServices([]);
@@ -207,22 +218,20 @@ const Service = ({route}) => {
       setCategoryLoading(true);
       try {
         const cached = inMemoryCache.get(cacheKey) || {};
-        // use cache if present
         if (
           cached.servicesForCategory &&
           Array.isArray(cached.servicesForCategory[catUuid])
         ) {
           const svcFromCache = cached.servicesForCategory[catUuid];
-          setServices(svcFromCache);
+          setServices(Array.isArray(svcFromCache) ? [...svcFromCache] : []);
           setSelectedCategory(catUuid);
           setErrorMsg('');
+          nudgeFlatListLayout();
         } else {
-          // fetch from network
           const svc = (await getServices(salonId, catUuid)) ?? [];
-          setServices(svc);
+          setServices(Array.isArray(svc) ? [...svc] : []);
           setSelectedCategory(catUuid);
           setErrorMsg('');
-
           inMemoryCache.set(cacheKey, {
             ...cached,
             servicesForCategory: {
@@ -232,15 +241,8 @@ const Service = ({route}) => {
             selectedCategory: catUuid,
             lastFetchedAt: Date.now(),
           });
-          console.log(
-            '[Service] services cached for category',
-            catUuid,
-            'salon',
-            cacheKey,
-          );
         }
 
-        // PREWARM: fetch subservices for first PREWARM_COUNT services (only if not cached)
         const cacheAfter = inMemoryCache.get(cacheKey) || {};
         const svcList =
           cacheAfter.servicesForCategory &&
@@ -259,20 +261,17 @@ const Service = ({route}) => {
           const missing = [];
           const cachedSubMap = cacheAfter.subServicesForService || {};
           toPrewarm.forEach(uuidToCheck => {
-            if (!Array.isArray(cachedSubMap[uuidToCheck])) {
+            if (!Array.isArray(cachedSubMap[uuidToCheck]))
               missing.push(uuidToCheck);
-            }
           });
 
           if (missing.length > 0) {
-            // non-blocking prewarm — we don't block the UI
             try {
               const prePromises = missing.map(u =>
                 getSubServices(u).catch(() => []),
               );
               const allSubs = await Promise.all(prePromises);
               const newSubMap = {...(cacheAfter.subServicesForService || {})};
-              // ensure we operate on a fresh copy of servicesForCategory
               cacheAfter.servicesForCategory =
                 cacheAfter.servicesForCategory || {};
               const svcArr = cacheAfter.servicesForCategory[catUuid] || svcList;
@@ -283,7 +282,6 @@ const Service = ({route}) => {
                   : [];
                 newSubMap[m] = subsForM;
 
-                // compute min/max price/duration for the corresponding service in svcArr (merge into services)
                 const prices = subsForM
                   .map(x => {
                     const p = parseFloat(x.price);
@@ -319,7 +317,6 @@ const Service = ({route}) => {
                 });
               });
 
-              // write back cache
               inMemoryCache.set(cacheKey, {
                 ...cacheAfter,
                 subServicesForService: newSubMap,
@@ -327,20 +324,14 @@ const Service = ({route}) => {
                 lastFetchedAt: Date.now(),
               });
 
-              // Update services state with computed min/max merged (only if still current category)
               if (mountedRef.current && selectedCategory === catUuid) {
-                setServices(prev => {
-                  const arr =
-                    cacheAfter.servicesForCategory &&
-                    cacheAfter.servicesForCategory[catUuid]
-                      ? cacheAfter.servicesForCategory[catUuid]
-                      : prev;
-                  return Array.isArray(arr) ? arr : prev;
-                });
-                console.log(
-                  '[Service] prewarm updated services for category',
-                  catUuid,
-                );
+                const arr =
+                  cacheAfter.servicesForCategory &&
+                  cacheAfter.servicesForCategory[catUuid]
+                    ? cacheAfter.servicesForCategory[catUuid]
+                    : services;
+                setServices(Array.isArray(arr) ? [...arr] : services);
+                nudgeFlatListLayout();
               }
             } catch (err) {
               console.log('prewarm subservices error', err);
@@ -354,10 +345,7 @@ const Service = ({route}) => {
         setCategoryLoading(false);
       }
     },
-    // note: we intentionally do not include 'services' here to avoid stomping on the value;
-    // we read services only as a fallback. This mirrors original behavior.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [salonId, selectedCategory, t, cacheKey],
+    [cacheKey, nudgeFlatListLayout, salonId, selectedCategory, services, t],
   );
 
   // open datebook
@@ -379,9 +367,7 @@ const Service = ({route}) => {
   // open subservices modal (cached first) — improved: writes cache and uses prewarm map
   const handleOpenSubServices = useCallback(
     async serviceUuid => {
-      if (!serviceUuid) {
-        return;
-      }
+      if (!serviceUuid) return;
       setSubServiceLoading(true);
       try {
         const cached = inMemoryCache.get(cacheKey) || {};
@@ -389,13 +375,13 @@ const Service = ({route}) => {
           cached.subServicesForService &&
           cached.subServicesForService[serviceUuid];
         if (Array.isArray(cachedList)) {
-          setSubServices(cachedList);
+          setSubServices(Array.isArray(cachedList) ? [...cachedList] : []);
           setShowSubModal(true);
+          nudgeFlatListLayout();
           return;
         }
-        // fallback network
         const subs = (await getSubServices(serviceUuid)) ?? [];
-        setSubServices(subs);
+        setSubServices(Array.isArray(subs) ? [...subs] : []);
         setShowSubModal(true);
         inMemoryCache.set(cacheKey, {
           ...cached,
@@ -405,12 +391,7 @@ const Service = ({route}) => {
           },
           lastFetchedAt: Date.now(),
         });
-        console.log(
-          '[Service] subservices cached for',
-          serviceUuid,
-          'salon',
-          cacheKey,
-        );
+        nudgeFlatListLayout();
       } catch (err) {
         console.log('Error fetching subservices', err);
         setSubServices([]);
@@ -419,7 +400,31 @@ const Service = ({route}) => {
         setSubServiceLoading(false);
       }
     },
-    [cacheKey],
+    [cacheKey, nudgeFlatListLayout],
+  );
+
+  // Called when user selects a subservice in the modal.
+  // Close modal first then navigate after dismiss/interaction finishes.
+  const handleSelectSubFromModal = useCallback(
+    serviceUuid => {
+      if (!serviceUuid) return;
+
+      // stash pending navigation info
+      pendingNavRef.current = {uuid: serviceUuid, isSub: true};
+
+      // close the modal first
+      setShowSubModal(false);
+
+      // For Android (and fallback), run after interactions and navigate if still pending.
+      InteractionManager.runAfterInteractions(() => {
+        const pending = pendingNavRef.current;
+        if (pending) {
+          openDateBook(pending.uuid, pending.isSub);
+          pendingNavRef.current = null;
+        }
+      });
+    },
+    [openDateBook],
   );
 
   // stable item renderer (no async inside)
@@ -478,7 +483,7 @@ const Service = ({route}) => {
   );
 
   const keyExtractor = useCallback(
-    (item, index) => (item?.id ? String(item.id) : String(index)),
+    (item, index) => String(item?.uuid ?? item?.id ?? index),
     [],
   );
 
@@ -587,14 +592,14 @@ const Service = ({route}) => {
             </Text>
             <TouchableOpacity
               style={styles.selectButtonSmall}
-              onPress={() => openDateBook(item.uuid, true)}>
+              onPress={() => handleSelectSubFromModal(item.uuid)}>
               <Text style={styles.selectButtonText}>{t('Select')}</Text>
             </TouchableOpacity>
           </View>
         </View>
       );
     },
-    [openDateBook, t],
+    [handleSelectSubFromModal, t],
   );
 
   return (
@@ -618,7 +623,10 @@ const Service = ({route}) => {
         </View>
       ) : (
         <FlatList
+          ref={flatRef}
+          key={String(listKey)}
           data={Array.isArray(services) ? services : []}
+          extraData={selectedCategory ?? services?.length}
           renderItem={renderServiceItem}
           keyExtractor={keyExtractor}
           ListHeaderComponent={ListHeader}
@@ -629,7 +637,7 @@ const Service = ({route}) => {
           maxToRenderPerBatch={8}
           windowSize={7}
           removeClippedSubviews={false}
-          nestedScrollEnabled
+          nestedScrollEnabled={Platform.OS === 'android'}
           ListEmptyComponent={
             categoryLoading ? (
               <ServiceSkeleton />
@@ -648,10 +656,25 @@ const Service = ({route}) => {
         visible={showSubModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowSubModal(false)}>
+        onRequestClose={() => {
+          // Clear any pending nav if user dismisses
+          pendingNavRef.current = null;
+          setShowSubModal(false);
+        }}
+        onDismiss={() => {
+          // This fires on iOS when modal fully dismissed — perform pending navigation if any
+          const pending = pendingNavRef.current;
+          if (pending) {
+            openDateBook(pending.uuid, pending.isSub);
+            pendingNavRef.current = null;
+          }
+        }}>
         <Pressable
           style={styles.modalOverlay}
-          onPress={() => setShowSubModal(false)}>
+          onPress={() => {
+            pendingNavRef.current = null; // clear pending navigation if user taps outside to cancel
+            setShowSubModal(false);
+          }}>
           <Pressable
             style={styles.modalSheet}
             onPress={e => e.stopPropagation()}>
@@ -662,7 +685,10 @@ const Service = ({route}) => {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{t('Details')}</Text>
               <TouchableOpacity
-                onPress={() => setShowSubModal(false)}
+                onPress={() => {
+                  pendingNavRef.current = null;
+                  setShowSubModal(false);
+                }}
                 hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
                 <Ionicons name="close-outline" size={22} />
               </TouchableOpacity>

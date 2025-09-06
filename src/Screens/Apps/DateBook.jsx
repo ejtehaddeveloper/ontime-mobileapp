@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react-native/no-inline-styles */
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
@@ -9,7 +10,6 @@ import {
   Modal,
   Pressable,
   Dimensions,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
 import {CommonActions, useNavigation} from '@react-navigation/native';
@@ -30,6 +30,7 @@ import {t} from 'i18next';
 import i18n from '../../assets/locales/i18';
 import moment from 'moment';
 import 'moment/locale/ar';
+import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 
 // Screen dims
 const {width, height} = Dimensions.get('window');
@@ -75,6 +76,17 @@ const arabicMonths = [
 const DateBook = ({route}) => {
   const {salonId, serviceID, isSubService} = route.params;
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const H_PADDING = 20; // same as styles.container.paddingHorizontal
+
+  // compute available width subtracting horizontal padding + safe-area insets
+  const containerWidth = useMemo(
+    () =>
+      Math.floor(
+        screenWidth - H_PADDING * 2 - (insets.left ?? 0) - (insets.right ?? 0),
+      ),
+    [insets.left, insets.right],
+  );
 
   // selection / UI state
   const [selectedDate, setSelectedDate] = useState(null);
@@ -201,7 +213,6 @@ const DateBook = ({route}) => {
   const date = `${currentYear}-${currentMonth}-${selectedDay}`;
 
   // layout math for strict 3x4 grid
-  const containerWidth = useMemo(() => Math.floor(screenWidth * 0.9), []);
   const gapH = 12; // horizontal gap between pills
   const gapV = 12; // vertical gap between pills
   const cols = 3,
@@ -680,7 +691,10 @@ const DateBook = ({route}) => {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{paddingVertical: 8}}
-            style={{width: screenWidth * 0.9, alignSelf: 'center'}}
+            style={{width: containerWidth, alignSelf: 'center'}}
+            extraData={selectedDay}
+            initialNumToRender={10}
+            removeClippedSubviews={false}
           />
         </View>
 
@@ -696,11 +710,20 @@ const DateBook = ({route}) => {
     currentMonth,
     currentYear,
     monthsToDisplay,
+    containerWidth,
   ]);
 
   // main screen render
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[
+        styles.container,
+        {
+          paddingLeft: H_PADDING + (insets.left ?? 0),
+          paddingRight: H_PADDING + (insets.right ?? 0),
+        },
+      ]}
+      edges={['top', 'left', 'right']}>
       <View style={styles.salonInfo}>
         <Ionicons
           name={i18n.language === 'en' ? 'arrow-back' : 'arrow-forward'}
@@ -713,7 +736,8 @@ const DateBook = ({route}) => {
         <Loading />
       ) : (
         <FlatList
-          data={[]}
+          // using a tiny non-empty data so ListHeaderComponent renders reliably on all devices
+          data={[{key: 'header'}]}
           ListHeaderComponent={
             <>
               {ListHeaderComponent()}
@@ -749,7 +773,12 @@ const DateBook = ({route}) => {
                       {page.map((slot, idx) => renderTimePill(slot, idx))}
                     </View>
                   )}
-                  contentContainerStyle={{paddingVertical: 8}}
+                  contentContainerStyle={{
+                    paddingVertical: 8,
+                  }}
+                  extraData={[pages, selectedDate]}
+                  removeClippedSubviews={false}
+                  initialNumToRender={2}
                 />
               )}
 
@@ -782,9 +811,10 @@ const DateBook = ({route}) => {
               </View>
             </>
           }
-          keyExtractor={() => 'k'}
+          keyExtractor={item => String(item.key)}
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
+          extraData={[pages, days, selectedDay, selectedDate]}
         />
       )}
 
@@ -814,6 +844,8 @@ const DateBook = ({route}) => {
               ItemSeparatorComponent={() => <View style={{height: 8}} />}
               showsVerticalScrollIndicator={false}
               style={{maxHeight: height * 0.6}}
+              extraData={empSelectedId}
+              removeClippedSubviews={false}
             />
 
             <TouchableOpacity
@@ -883,7 +915,11 @@ const DateBook = ({route}) => {
               <Loading />
             ) : (
               <>
-                <View style={styles.modalHeaderContainer}>
+                <View
+                  style={[
+                    styles.modalHeaderContainer,
+                    {width: containerWidth},
+                  ]}>
                   <Text style={styles.modalTitle}>{t('Checkout')}</Text>
                   <Ionicons
                     name="close-outline"
@@ -940,6 +976,7 @@ const DateBook = ({route}) => {
                   )}
                   keyExtractor={item => String(item.cart_item_id)}
                   style={styles.serviceList}
+                  removeClippedSubviews={false}
                 />
 
                 {cart.length > 0 && (
@@ -974,9 +1011,9 @@ const styles = StyleSheet.create({
   // container & header
   container: {
     flex: 1,
-    backgroundColor: '#fff',
     paddingHorizontal: 20,
     paddingBottom: 20,
+    backgroundColor: '#fff',
   },
   salonInfo: {
     flexDirection: 'row',
@@ -1138,25 +1175,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    width: screenWidth * 0.9,
+    width: '100%',
     marginBottom: 12,
   },
   modalTitle: {fontSize: 16, fontWeight: '600'},
-  // checkout modal
-  modalHeaderContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: 8,
-    marginBottom: 8,
-  },
   serv: {
     paddingVertical: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
   },
-  serviceList: {width: screenWidth * 0.94, marginBottom: 8},
+  serviceList: {width: '100%', marginBottom: 8},
   text: {fontSize: 14, fontWeight: '600'},
   title2: {fontSize: 12, fontWeight: '700', color: Colors.black2},
   priceText: {fontWeight: '800'},
@@ -1176,7 +1205,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonText: {color: '#fff', fontWeight: '700'},
-  contentContainer: {paddingBottom: 30, backgroundColor: '#fff'},
+  contentContainer: {paddingBottom: 30},
 });
 
 export default DateBook;
