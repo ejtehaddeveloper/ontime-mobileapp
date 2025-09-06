@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
   cartLength: {
     width: 15,
     height: 15,
-    borderRadius: 50,
+    borderRadius: 5,
     backgroundColor: 'red',
     position: 'absolute',
     color: '#fff',
@@ -51,6 +51,10 @@ const styles = StyleSheet.create({
     left: 20,
     fontSize: 10,
     top: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    display: 'flex',
   },
   cartIcon: {padding: 8},
 });

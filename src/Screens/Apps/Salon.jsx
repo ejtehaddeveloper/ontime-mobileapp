@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   SafeAreaView,
+  Platform,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -131,11 +132,13 @@ const areCategoriesDifferent = (a = [], b = []) => {
 };
 
 // --- data hook using in-memory cache (no persistence) ---
+// NOTE: returns cacheLoaded boolean to let caller nudge FlatList layout when cached data used
 function useSalonDataWithCache(salonId, isAuth) {
   const [salon, setSalon] = useState(null);
   const [categories, setCategories] = useState([]);
   const [isFav, setIsFav] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [cacheLoaded, setCacheLoaded] = useState(false); // <-- new
 
   // keep a ref to mounted to avoid updates after unmount
   const mountedRef = useRef(true);
@@ -149,6 +152,7 @@ function useSalonDataWithCache(salonId, isAuth) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setCacheLoaded(false);
 
     const cached = salonCache.get(String(salonId));
     if (cached) {
@@ -160,6 +164,7 @@ function useSalonDataWithCache(salonId, isAuth) {
         );
         setIsFav(!!cached.isFav);
         setLoading(false);
+        setCacheLoaded(true); // indicate we rendered from cache
       }
 
       // background fetch to confirm latest data; only update if changed
@@ -263,7 +268,14 @@ function useSalonDataWithCache(salonId, isAuth) {
     [salonId],
   );
 
-  return {salon, categories, isFav, setIsFav: setIsFavAndCache, loading};
+  return {
+    salon,
+    categories,
+    isFav,
+    setIsFav: setIsFavAndCache,
+    loading,
+    cacheLoaded, // <-- returned
+  };
 }
 
 // --- Main screen
@@ -274,10 +286,8 @@ const SalonScreen = ({route}) => {
   const navigation = useNavigation();
   const {isAuth} = React.useContext(AuthContext);
 
-  const {salon, categories, isFav, setIsFav, loading} = useSalonDataWithCache(
-    salonId,
-    isAuth,
-  );
+  const {salon, categories, isFav, setIsFav, loading, cacheLoaded} =
+    useSalonDataWithCache(salonId, isAuth);
   const [authModal, setAuthModal] = useState(false);
 
   const numColumns = useMemo(
@@ -339,6 +349,30 @@ const SalonScreen = ({route}) => {
   const logoSource = salon?.images?.logo
     ? {uri: `${hostImge}${salon.images.logo}`, cache: 'force-cache'}
     : null;
+
+  // FlatList ref for nudging layout when cached loaded
+  const flatRef = useRef(null);
+
+  // When cached data is used, FlatList on iOS sometimes needs a layout nudge.
+  // We call scrollToOffset inside requestAnimationFrame + a small timeout fallback.
+  useEffect(() => {
+    if (!cacheLoaded) return;
+    // nudge only when categories list exists
+    requestAnimationFrame(() => {
+      try {
+        flatRef.current?.scrollToOffset?.({offset: 0, animated: false});
+      } catch (e) {
+        // ignore
+      }
+    });
+    // fallback (some iOS versions need an extra tick)
+    const t = setTimeout(() => {
+      try {
+        flatRef.current?.scrollToOffset?.({offset: 0, animated: false});
+      } catch (e) {}
+    }, 60);
+    return () => clearTimeout(t);
+  }, [cacheLoaded]);
 
   // Header view for FlatList (salon info + ads)
   const ListHeader = useCallback(() => {
@@ -418,6 +452,7 @@ const SalonScreen = ({route}) => {
       ) : (
         // --- FlatList is the top-level scroll container. No ScrollView.
         <FlatList
+          ref={flatRef}
           data={categories}
           renderItem={renderCategory}
           keyExtractor={item =>
@@ -429,7 +464,8 @@ const SalonScreen = ({route}) => {
           style={styles.categoriesList}
           initialNumToRender={6}
           windowSize={9}
-          removeClippedSubviews
+          // Important: disable removeClippedSubviews on iOS to avoid blank-on-render issues
+          removeClippedSubviews={Platform.OS === 'android'}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={ListHeader}
           ListHeaderComponentStyle={{paddingBottom: 10}}
@@ -438,6 +474,7 @@ const SalonScreen = ({route}) => {
               {t('No categories found')}
             </Text>
           }
+          extraData={categories} // ensure re-render when categories change
         />
       )}
 
