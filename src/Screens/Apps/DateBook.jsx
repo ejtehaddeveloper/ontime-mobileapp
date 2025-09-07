@@ -544,10 +544,11 @@ const DateBook = ({route}) => {
       case 4:
         setPop(
           i18n.language === 'ar'
-            ? 'لديك خدمة من صالون مختلف في سلتك. \n \n هل ترغب في مسح سلتك وإضافة هذه الخدمة؟'
-            : 'You have service from a different salon in your cart. \n \n Would you like to clear your cart and add this service?',
+            ? 'لديك عناصر من صالون آخر في سلتك. هل تريد مسح السلة وإضافة هذه الخدمة؟'
+            : 'You have items from another salon in your cart. Clear the cart and add this service?',
         );
         break;
+
       case 5:
         setPop(
           i18n.language === 'ar'
@@ -836,7 +837,48 @@ const DateBook = ({route}) => {
                 onPress={() => setEmpModalVisible(false)}
               />
             </View>
+            <TouchableOpacity
+              style={[
+                styles.empRow,
+                empSelectedId == null && styles.empRowSelected,
+                {paddingVertical: 12},
+              ]}
+              onPress={() => {
+                setEmpSelectedId(null);
+                setEmpSelectedName(t('anyone'));
+                setEmpModalVisible(false);
+              }}>
+              <View
+                style={[
+                  styles.empAvatar,
+                  empSelectedId == null && styles.empAvatarSelected,
+                ]}>
+                <Text
+                  style={[
+                    styles.empInitials,
+                    empSelectedId == null && {color: '#fff'},
+                  ]}>
+                  A
+                </Text>
+              </View>
 
+              <View style={{flex: 1, paddingHorizontal: 10}}>
+                <Text style={styles.empName} numberOfLines={1}>
+                  {t('anyone')}
+                </Text>
+                <Text style={styles.empPosition} numberOfLines={1}>
+                  {i18n.language === 'ar' ? 'أي موظف' : 'Any staff'}
+                </Text>
+              </View>
+
+              {empSelectedId == null && (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={20}
+                  color={Colors.primary}
+                />
+              )}
+            </TouchableOpacity>
             <FlatList
               data={employees}
               renderItem={renderEmployeeRow}
@@ -889,16 +931,50 @@ const DateBook = ({route}) => {
                 }
               />
             </View>
+
             <Text style={{textAlign: 'center', marginBottom: 16}}>
               {num === 7 ? errorC : pop}
             </Text>
-            <TouchableOpacity
-              style={[styles.primaryBtn, {alignSelf: 'center', width: 140}]}
-              onPress={() => (num === 6 ? Done() : setIsVisibleMsg(false))}>
-              <Text style={styles.primaryBtnText}>
-                {num === 6 ? t('Done') : t('Close')}
-              </Text>
-            </TouchableOpacity>
+
+            {/* When num === 4 (different salon) show Clear + Close buttons,
+          otherwise show single Done/Close button */}
+            {num === 4 ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}>
+                <TouchableOpacity
+                  style={[styles.primaryBtn, {width: 140, marginRight: 8}]}
+                  onPress={async () => {
+                    // close current popup, then call the existing clear flow
+                    setIsVisibleMsg(false);
+                    await handleClearCart();
+                  }}>
+                  <Text style={styles.primaryBtnText}>{t('Clear')}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryBtn,
+                    {width: 100, height: 56, justifyContent: 'center'},
+                  ]}
+                  onPress={() => setIsVisibleMsg(false)}>
+                  <Text style={[styles.primaryBtnText, {color: '#000'}]}>
+                    {t('Close')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.primaryBtn, {alignSelf: 'center', width: 140}]}
+                onPress={() => (num === 6 ? Done() : setIsVisibleMsg(false))}>
+                <Text style={styles.primaryBtnText}>
+                  {num === 6 ? t('Done') : t('Close')}
+                </Text>
+              </TouchableOpacity>
+            )}
           </Pressable>
         </Pressable>
       </Modal>

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react-native/no-inline-styles */
 /* RTL-friendly Salon screen — FlatList is the single scroll container (fixes nested VirtualizedList warning) */
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';

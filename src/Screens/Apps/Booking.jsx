@@ -282,7 +282,11 @@ const styles = StyleSheet.create({
     direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
     paddingTop: screenHeight * 0.03,
   },
-  header: {alignItems: 'center', marginBottom: 14},
+  header: {
+    alignItems: 'center',
+    marginBottom: 14,
+    marginTop: Platform.OS === 'ios' ? 20 : 0,
+  },
   title: {fontSize: 20, fontWeight: '700', color: Colors.black1},
   content: {flex: 1, overflow: 'visible'},
   tabWrap: {

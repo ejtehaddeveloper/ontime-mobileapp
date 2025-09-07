@@ -1,3 +1,5 @@
+/* eslint-disable no-undef */
+/* eslint-disable react-hooks/exhaustive-deps */
 import {useCallback, useContext, useEffect, useMemo, useState} from 'react';
 import {
   StyleSheet,
