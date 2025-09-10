@@ -213,10 +213,6 @@ const Profile = () => {
   }, [navigation, logout2]);
 
   const performUpdateName = useCallback(
-    /**
-     * Called by child Edit modal when user confirms.
-     * We fetch data after successful update to reflect server state.
-     */
     async newName => {
       if (!newName || newName.trim().length === 0) {
         Alert.alert(t('Error'), t('Name cannot be empty'));
@@ -225,7 +221,6 @@ const Profile = () => {
       try {
         const response = await updateUsers(newName.trim());
         if (response) {
-          // re-fetch user
           await fetchData();
           return true;
         }
@@ -237,7 +232,6 @@ const Profile = () => {
     [fetchData],
   );
 
-  // ---- SettingRow component (lightweight) ----
   const SettingRow = useCallback(({icon, label, onPress, rightElement}) => {
     return (
       <Pressable
@@ -257,7 +251,6 @@ const Profile = () => {
     );
   }, []);
 
-  // ---- UI ----
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
