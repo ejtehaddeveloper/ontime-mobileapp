@@ -8,21 +8,16 @@ import React, {
   useState,
 } from 'react';
 import {
-  Image,
-  Modal,
   Pressable,
   TouchableOpacity,
-  StyleSheet,
   Text,
   View,
   Switch,
-  TextInput,
   I18nManager,
   Linking,
   Alert,
   ScrollView,
   SafeAreaView,
-  Platform,
 } from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -36,19 +31,10 @@ import i18n from '../../assets/locales/i18';
 import {t} from 'i18next';
 import messaging from '@react-native-firebase/messaging';
 import ReactNativeRestart from 'react-native-restart';
-
-/**
- * Profile screen — fixes:
- * 1) Avoid flicker when typing in Edit name modal by moving the typing state
- *    into the modal (local state) and committing only on confirm.
- * 2) Fix Language modal props mismatch and make language change reliably call
- *    changeLanguage + persist setting + restart for RTL changes.
- * 3) Minor performance/readability improvements (memoized static objects).
- *
- * Notes:
- * - Edit flow no longer causes parent to re-render on every keystroke.
- * - Language modal now receives initial language and calls parent's handler.
- */
+import styles from '../../components/profile/proStyles';
+import LanguageModal from '../../components/profile/LanguageModal';
+import ConfirmModal from '../../components/profile/ConfirmModal';
+import EditModal from '../../components/profile/EditModal';
 
 const Profile = () => {
   // ---- state ----
@@ -66,15 +52,6 @@ const Profile = () => {
 
   const {logout2, isAuth} = useContext(AuthContext);
   const navigation = useNavigation();
-
-  // ---- static images (single source per language) ----
-  const images = useMemo(
-    () => ({
-      ar: require('../../assets/images/ar.png'),
-      en: require('../../assets/images/en.png'),
-    }),
-    [],
-  );
 
   // ---- lifecycle ----
   useEffect(() => {
@@ -119,11 +96,15 @@ const Profile = () => {
     setLoading(true);
     try {
       const data = await getusers();
-      if (mountedRef.current) setUserInfo(data);
+      if (mountedRef.current) {
+        setUserInfo(data);
+      }
     } catch (error) {
       console.log('Error fetching data:', error);
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -197,29 +178,15 @@ const Profile = () => {
   }, [notificationsEnabled]);
 
   // ---- WhatsApp ----
-  const handleWhatsAppPress = useCallback(async () => {
+  const handleWhatsAppPress = useCallback(() => {
     const phoneNumber = '+97430541411';
     const message = i18n.language === 'ar' ? 'مرحبا !' : 'Hello!';
-    const appUrl = `whatsapp://send?phone=${phoneNumber}&text=${encodeURIComponent(
-      message,
-    )}`;
     const webUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(
       message,
     )}`;
-
-    try {
-      const supported = await Linking.canOpenURL(appUrl);
-      if (supported) {
-        await Linking.openURL(appUrl);
-      } else {
-        await Linking.openURL(webUrl);
-      }
-    } catch (error) {
-      Alert.alert(
-        t('Error'),
-        t('An error occurred while trying to open WhatsApp'),
-      );
-    }
+    Linking.openURL(webUrl).catch(() => {
+      Alert.alert(t('Error'), t('Unable to open WhatsApp web link.'));
+    });
   }, []);
 
   // ---- logout / delete / edit ----
@@ -289,271 +256,6 @@ const Profile = () => {
       </Pressable>
     );
   }, []);
-
-  // ---- ModalWrapper WITHOUT animation (instant show/hide) ----
-  const ModalWrapperNoAnimation = useCallback(
-    ({
-      visible,
-      onRequestClose,
-      children,
-      backdropPressCloses = true,
-      testID,
-    }) => {
-      if (!visible) return null;
-
-      return (
-        <Modal
-          visible={visible}
-          transparent
-          animationType="none"
-          presentationStyle="overFullScreen"
-          statusBarTranslucent
-          hardwareAccelerated
-          onRequestClose={onRequestClose}
-          testID={testID}>
-          <View style={styles.simpleModalBackdrop}>
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={() =>
-                backdropPressCloses && onRequestClose && onRequestClose()
-              }
-            />
-            <View style={styles.simpleModalCard}>{children}</View>
-          </View>
-        </Modal>
-      );
-    },
-    [],
-  );
-
-  // ---- Language modal (fixed props and behavior) ----
-  const LanguageModal = React.memo(
-    ({visible, onClose, initialLang = 'en', onConfirmLanguage}) => {
-      // local tempLang so selecting options doesn't update parent state repeatedly
-      const [localTemp, setLocalTemp] = useState(initialLang);
-
-      // sync when modal opens
-      useEffect(() => {
-        if (visible) setLocalTemp(initialLang);
-      }, [visible, initialLang]);
-
-      const selectLocal = useCallback(lang => setLocalTemp(lang), []);
-
-      const confirm = useCallback(async () => {
-        if (onConfirmLanguage) await onConfirmLanguage(localTemp);
-        onClose && onClose();
-      }, [localTemp, onConfirmLanguage, onClose]);
-
-      return (
-        <ModalWrapperNoAnimation
-          visible={visible}
-          onRequestClose={onClose}
-          backdropPressCloses={false}
-          testID="language-modal">
-          <Text style={styles.modalTitle}>{t('Choose a Language')}</Text>
-
-          <View style={{marginTop: 12}}>
-            <TouchableOpacity
-              activeOpacity={0.78}
-              style={[
-                styles.simpleOption,
-                localTemp === 'ar' && styles.simpleOptionSelected,
-              ]}
-              onPress={() => selectLocal('ar')}>
-              <Text
-                style={[
-                  styles.simpleOptionText,
-                  localTemp === 'ar' && {color: Colors.primary},
-                ]}>
-                عربي
-              </Text>
-
-              <View style={styles.flagWrapper}>
-                <Image
-                  source={images.ar}
-                  style={styles.langSmallFlag}
-                  resizeMode="contain"
-                />
-                {localTemp === 'ar' && (
-                  <View style={styles.checkBadge}>
-                    <Ionicons name="checkmark" size={10} color="#fff" />
-                  </View>
-                )}
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.78}
-              style={[
-                styles.simpleOption,
-                localTemp === 'en' && styles.simpleOptionSelected,
-              ]}
-              onPress={() => selectLocal('en')}>
-              <Text
-                style={[
-                  styles.simpleOptionText,
-                  localTemp === 'en' && {color: Colors.primary},
-                ]}>
-                English
-              </Text>
-
-              <View style={styles.flagWrapper}>
-                <Image
-                  source={images.en}
-                  style={styles.langSmallFlag}
-                  resizeMode="contain"
-                />
-                {localTemp === 'en' && (
-                  <View style={styles.checkBadge}>
-                    <Ionicons name="checkmark" size={10} color="#fff" />
-                  </View>
-                )}
-              </View>
-            </TouchableOpacity>
-
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                marginTop: 14,
-              }}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={styles.simpleCancelBtn}
-                onPress={onClose}>
-                <Text style={styles.simpleCancelText}>{t('Cancel')}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={[
-                  styles.simpleConfirmBtn,
-                  {backgroundColor: localTemp ? Colors.primary : '#ccc'},
-                ]}
-                onPress={confirm}
-                disabled={!localTemp}>
-                <Text style={styles.simpleConfirmText}>{t('Change')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ModalWrapperNoAnimation>
-      );
-    },
-  );
-
-  // ---- Edit modal (LOCAL typing state to avoid parent re-renders) ----
-  const EditModal = ({visible, onClose, initialValue, onConfirm}) => {
-    const [localName, setLocalName] = useState(initialValue ?? '');
-
-    // When modal opens with different initial value, sync once
-    useEffect(() => {
-      if (visible) setLocalName(initialValue ?? '');
-    }, [visible, initialValue]);
-
-    const submit = useCallback(async () => {
-      if (!localName || localName.trim().length === 0) {
-        Alert.alert(t('Error'), t('Name cannot be empty'));
-        return;
-      }
-      const ok = await onConfirm(localName.trim());
-      if (ok) {
-        onClose && onClose();
-      } else {
-        // keep modal open for retry
-      }
-    }, [localName, onConfirm, onClose]);
-
-    return (
-      <ModalWrapperNoAnimation
-        visible={visible}
-        onRequestClose={onClose}
-        backdropPressCloses={false}
-        testID="edit-modal">
-        <Text style={styles.modalTitle}>{t('Edit your name')}</Text>
-        <TextInput
-          placeholder={t('Enter your name')}
-          value={localName}
-          onChangeText={setLocalName}
-          style={styles.input}
-          placeholderTextColor={Colors.black3}
-          autoFocus
-          returnKeyType="done"
-          onSubmitEditing={submit}
-        />
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            marginTop: 14,
-          }}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={styles.simpleCancelBtn}
-            onPress={onClose}>
-            <Text style={styles.simpleCancelText}>{t('Cancel')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={[styles.simpleConfirmBtn, {backgroundColor: Colors.primary}]}
-            onPress={submit}>
-            <Text style={styles.simpleConfirmText}>{t('Confirm')}</Text>
-          </TouchableOpacity>
-        </View>
-      </ModalWrapperNoAnimation>
-    );
-  };
-
-  // ---- Confirm modal stays simple ----
-  const ConfirmModal = ({
-    visible,
-    title,
-    iconName,
-    onCancel,
-    onConfirm,
-    cancelText = t('Cancel'),
-    confirmText = t('Confirm'),
-    confirmColor = Colors.primary,
-    iconColor,
-  }) => (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="none"
-      onRequestClose={onCancel}>
-      <View style={styles.simpleModalBackdrop}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
-        <View style={styles.simpleModalCard}>
-          <View style={{alignItems: 'center', marginBottom: 8}}>
-            <Ionicons
-              name={iconName}
-              size={26}
-              color={iconColor ?? Colors.primary}
-            />
-          </View>
-          <Text style={styles.modalTitle}>{title}</Text>
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              marginTop: 14,
-            }}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={styles.simpleCancelBtn}
-              onPress={onCancel}>
-              <Text style={styles.simpleCancelText}>{cancelText}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[styles.simpleConfirmBtn, {backgroundColor: confirmColor}]}
-              onPress={onConfirm}>
-              <Text style={styles.simpleConfirmText}>{confirmText}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
 
   // ---- UI ----
   return (
@@ -696,180 +398,5 @@ const Profile = () => {
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  safe: {flex: 1, backgroundColor: '#fff'},
-  container: {flex: 1, backgroundColor: '#fff'},
-  header: {marginTop: 18, alignItems: 'center'},
-  title: {fontSize: 22, fontWeight: '800', color: '#111'},
-
-  profileCard: {
-    marginHorizontal: 16,
-    marginTop: 14,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOpacity: 0.04,
-        shadowOffset: {width: 0, height: 8},
-        shadowRadius: 16,
-      },
-      android: {elevation: 3},
-    }),
-  },
-  profileInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  nameText: {fontSize: 18, fontWeight: '700', color: '#111'},
-  phoneText: {fontSize: 13, color: Colors.primary, marginTop: 4},
-  editIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    backgroundColor: '#fff',
-  },
-
-  section: {marginTop: 20, marginHorizontal: 16},
-  sectionTitle: {fontSize: 16, fontWeight: '800', marginBottom: 12},
-  rowCard: {
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOpacity: 0.02,
-        shadowOffset: {width: 0, height: 4},
-        shadowRadius: 8,
-      },
-      android: {elevation: 1},
-    }),
-  },
-  pressedRow: {opacity: 0.85},
-  rowLeft: {flexDirection: 'row', alignItems: 'center'},
-  rowText: {fontSize: 15},
-  rowRight: {},
-  smallText: {fontSize: 14, color: '#666'},
-
-  // simple modal backdrop and card
-  simpleModalBackdrop: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.28)',
-  },
-  simpleModalCard: {
-    width: '88%',
-    maxWidth: 360,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOpacity: 0.06,
-        shadowOffset: {width: 0, height: 8},
-        shadowRadius: 12,
-      },
-      android: {elevation: 6},
-    }),
-  },
-
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  input: {
-    height: 44,
-    borderColor: '#E8E8E8',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    backgroundColor: '#fff',
-    marginTop: 8,
-  },
-
-  // language options
-  simpleOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-    marginBottom: 8,
-  },
-  simpleOptionSelected: {
-    backgroundColor: 'rgba(52,76,183,0.04)',
-    borderColor: Colors.primary,
-  },
-  simpleOptionText: {fontSize: 16, flexShrink: 1},
-
-  // flag wrapper & badge
-  flagWrapper: {
-    width: 36,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 6,
-    overflow: 'hidden',
-    backgroundColor: 'transparent',
-    marginLeft: 8,
-  },
-  langSmallFlag: {width: 28, height: 18},
-
-  // small check badge shown inside the flag box when selected
-  checkBadge: {
-    position: 'absolute',
-    right: 2,
-    bottom: 2,
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // buttons
-  simpleCancelBtn: {
-    flex: 1,
-    height: 42,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#DDD',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-    backgroundColor: '#fff',
-  },
-  simpleCancelText: {fontSize: 15, color: '#333'},
-  simpleConfirmBtn: {
-    flex: 1,
-    height: 42,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  simpleConfirmText: {fontSize: 15, color: '#fff', fontWeight: '700'},
-});
 
 export default Profile;

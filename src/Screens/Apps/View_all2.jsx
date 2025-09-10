@@ -1,3 +1,4 @@
+/* eslint-disable react-native/no-inline-styles */
 import React, {useEffect, useState, useMemo, useCallback} from 'react';
 import {
   StyleSheet,
@@ -22,7 +23,7 @@ const isRTLglobal = i18n.language === 'ar';
 
 I18nManager.forceRTL(isRTLglobal);
 
-const NUM_COLUMNS = 3;
+// const NUM_COLUMNS = 3;
 
 const View_all2 = () => {
   const navigation = useNavigation();

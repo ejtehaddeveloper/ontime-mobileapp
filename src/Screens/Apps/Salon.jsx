@@ -45,7 +45,9 @@ const SvgImage = React.memo(({imageUrl, width = 80, height = 80}) => {
   );
   useEffect(() => {
     let mounted = true;
-    if (!imageUrl) return;
+    if (!imageUrl) {
+      return;
+    }
     const cached = svgCache.get(imageUrl);
     if (cached) {
       setXml(cached);
@@ -54,7 +56,9 @@ const SvgImage = React.memo(({imageUrl, width = 80, height = 80}) => {
     fetch(imageUrl)
       .then(res => res.text())
       .then(text => {
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
         svgCache.set(imageUrl, text);
         setXml(text);
       })
@@ -64,7 +68,9 @@ const SvgImage = React.memo(({imageUrl, width = 80, height = 80}) => {
     return () => (mounted = false);
   }, [imageUrl]);
 
-  if (!xml) return null;
+  if (!xml) {
+    return null;
+  }
   return <SvgXml xml={xml} width={width} height={height} />;
 });
 
@@ -107,7 +113,9 @@ const CategoryItem = React.memo(({item, onPress, isRTL, itemWidth}) => {
 
 // --- Auth modal
 const AuthModal = ({visible, onClose, onLogin}) => {
-  if (!visible) return null;
+  if (!visible) {
+    return null;
+  }
   return (
     <Pressable style={styles.modalContainer} onPress={onClose}>
       <View style={styles.modalContent}>
@@ -124,10 +132,16 @@ const AuthModal = ({visible, onClose, onLogin}) => {
 
 // -------- helper: shallow compare lists of categories by id --------
 const areCategoriesDifferent = (a = [], b = []) => {
-  if (!Array.isArray(a) || !Array.isArray(b)) return true;
-  if (a.length !== b.length) return true;
+  if (!Array.isArray(a) || !Array.isArray(b)) {
+    return true;
+  }
+  if (a.length !== b.length) {
+    return true;
+  }
   for (let i = 0; i < a.length; i++) {
-    if (String(a[i]?.id) !== String(b[i]?.id)) return true;
+    if (String(a[i]?.id) !== String(b[i]?.id)) {
+      return true;
+    }
   }
   return false;
 };
@@ -175,7 +189,9 @@ function useSalonDataWithCache(salonId, isAuth) {
         isAuth ? IFfavorite(salonId) : Promise.resolve({is_favorite: false}),
       ])
         .then(([s, c, f]) => {
-          if (cancelled || !mountedRef.current) return;
+          if (cancelled || !mountedRef.current) {
+            return;
+          }
           const incomingSalon = s ?? null;
           const incomingCategories = Array.isArray(c) ? c : [];
           const incomingFav = !!(f && f.is_favorite);
@@ -225,7 +241,9 @@ function useSalonDataWithCache(salonId, isAuth) {
       isAuth ? IFfavorite(salonId) : Promise.resolve({is_favorite: false}),
     ])
       .then(([s, c, f]) => {
-        if (cancelled || !mountedRef.current) return;
+        if (cancelled || !mountedRef.current) {
+          return;
+        }
         const incomingSalon = s ?? null;
         const incomingCategories = Array.isArray(c) ? c : [];
         const incomingFav = !!(f && f.is_favorite);
@@ -247,7 +265,9 @@ function useSalonDataWithCache(salonId, isAuth) {
         console.log('useSalonData initial fetch error', err);
       })
       .finally(() => {
-        if (mountedRef.current) setLoading(false);
+        if (mountedRef.current) {
+          setLoading(false);
+        }
       });
 
     return () => {
@@ -304,7 +324,9 @@ const SalonScreen = ({route}) => {
   const handleGoBack = useCallback(() => navigation.goBack(), [navigation]);
 
   const openMap = useCallback(() => {
-    if (!salon?.location?.address) return;
+    if (!salon?.location?.address) {
+      return;
+    }
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
       salon.location.address,
     )}`;
@@ -357,7 +379,9 @@ const SalonScreen = ({route}) => {
   // When cached data is used, FlatList on iOS sometimes needs a layout nudge.
   // We call scrollToOffset inside requestAnimationFrame + a small timeout fallback.
   useEffect(() => {
-    if (!cacheLoaded) return;
+    if (!cacheLoaded) {
+      return;
+    }
     // nudge only when categories list exists
     requestAnimationFrame(() => {
       try {
@@ -367,12 +391,12 @@ const SalonScreen = ({route}) => {
       }
     });
     // fallback (some iOS versions need an extra tick)
-    const t = setTimeout(() => {
+    const tm = setTimeout(() => {
       try {
         flatRef.current?.scrollToOffset?.({offset: 0, animated: false});
       } catch (e) {}
     }, 60);
-    return () => clearTimeout(t);
+    return () => clearTimeout(tm);
   }, [cacheLoaded]);
 
   // Header view for FlatList (salon info + ads)

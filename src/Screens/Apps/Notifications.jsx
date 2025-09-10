@@ -18,7 +18,6 @@ import {
   Pressable,
   Image,
   SafeAreaView,
-  Alert,
 } from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import {
@@ -101,14 +100,22 @@ const Notifications = () => {
 
   const fetchNotifications = useCallback(
     async (pageNumber, {initial = false, prependOnly = false} = {}) => {
-      if (pageNumber > 1 && loadingMore) return;
+      if (pageNumber > 1 && loadingMore) {
+        return;
+      }
       if (!initial && !prependOnly && pageNumber === 1 && loading === false) {
         // allow normal fetch
       }
-      if (!initial && !hasMore && pageNumber > 1) return;
+      if (!initial && !hasMore && pageNumber > 1) {
+        return;
+      }
 
-      if (pageNumber > 1) setLoadingMore(true);
-      if (pageNumber === 1 && initial) setLoading(true);
+      if (pageNumber > 1) {
+        setLoadingMore(true);
+      }
+      if (pageNumber === 1 && initial) {
+        setLoading(true);
+      }
 
       try {
         const result = await GetNotifications(pageNumber);
@@ -245,7 +252,6 @@ const Notifications = () => {
     } else {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
