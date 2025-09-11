@@ -220,7 +220,7 @@ const BookingDetails = ({route}) => {
       appointmentID,
       salonId,
       serviceID,
-      isSubService,
+      isSubService: isSubService ? 1 : 0,
     });
   }, [id, salon, navigation]);
 

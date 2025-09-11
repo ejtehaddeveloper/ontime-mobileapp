@@ -15,17 +15,9 @@ import {
 import {CommonActions, useNavigation} from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {Colors} from '../../assets/constants';
-import {
-  appointment,
-  Cart,
-  ClearCart,
-  deleteCart,
-  getCart,
-  getEmployee,
-  getTime,
-} from '../../context/api';
+import {ChangeAppoint, getEmployee, getTime} from '../../context/api';
 import Loading from '../../assets/common/Loading';
-import {screenHeight, screenWidth} from '../../assets/constants/ScreenSize';
+import {screenWidth} from '../../assets/constants/ScreenSize';
 import {t} from 'i18next';
 import i18n from '../../assets/locales/i18';
 import moment from 'moment';
@@ -33,7 +25,7 @@ import 'moment/locale/ar';
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 
 // Screen dims
-const {width, height} = Dimensions.get('window');
+const {height} = Dimensions.get('window');
 
 const months = [
   'Jan',
@@ -49,7 +41,6 @@ const months = [
   'Nov',
   'Dec',
 ];
-
 const arabicMonths = [
   'يناير',
   'فبراير',
@@ -66,18 +57,22 @@ const arabicMonths = [
 ];
 
 /**
- * ChangeBook — improved & 3-column time grid
- * Fix: validation now uses a ref (selectedDateRef) so validation can't miss a freshly-selected time.
- * Also: safe-area aware layout + fixes for iOS FlatList blank render.
+ * ChangeBook — improved & strict 3x4 time grid
+ * - Only available slots are used
+ * - In-memory caching per (emp|any) + date
+ * - Pages of 12 slots (3 cols x 4 rows), horizontally scrollable
+ * - Empty placeholders keep consistent layout when a page has <12 items
+ * - Pills have consistent width & height computed from screen size
  */
 
 const ChangeBook = ({route}) => {
-  const {salonId, serviceID, isSubService} = route.params || {};
+  const {appointmentID, salonId, serviceID, isSubService} = route.params;
+
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const H_PADDING = 20; // matches styles.container.paddingHorizontal
+  const H_PADDING = 20; // same as styles.container.paddingHorizontal
 
-  // compute content width taking safe-area insets into account
+  // compute available width subtracting horizontal padding + safe-area insets
   const containerWidth = useMemo(
     () =>
       Math.floor(
@@ -87,8 +82,7 @@ const ChangeBook = ({route}) => {
   );
 
   // selection / UI state
-  const [selectedDate, setSelectedDate] = useState(null); // selected start_time string e.g. "09:00"
-  const selectedDateRef = useRef(null); // synchronous mirror for validation
+  const [selectedDate, setSelectedDate] = useState(null);
   const [selectedEndDate, setSelectedEndDate] = useState(null);
   const [selectedDay, setSelectedDay] = useState(
     String(new Date().getDate()).padStart(2, '0'),
@@ -100,18 +94,14 @@ const ChangeBook = ({route}) => {
   const [empSelectedId, setEmpSelectedId] = useState(null);
   const [empSelectedName, setEmpSelectedName] = useState(t('anyone'));
 
-  const [timeSlots, setTimeSlots] = useState([]); // raw list from API
+  const [timeSlots, setTimeSlots] = useState([]); // only available slots
   const [loadTime, setLoadTime] = useState(false);
   const [errorT, setErrorT] = useState('');
 
   // other UI / modal states
   const [loading, setLoading] = useState(true);
-  const [isVisibleCart, setIsVisibleCart] = useState(false);
   const [isVisibleMsg, setIsVisibleMsg] = useState(false);
-  const [cart, setCart] = useState([]);
-  const [TPrice, setTPrice] = useState(null);
   const [subLoading, setSubLoading] = useState(false);
-  const [subLoading2, setSubLoading2] = useState(false);
   const [num, setNum] = useState(null);
   const [pop, setPop] = useState('');
   const [errorC, setErrorC] = useState(null);
@@ -145,24 +135,23 @@ const ChangeBook = ({route}) => {
       const list = Array.isArray(res) ? res : [];
       setEmployees(list);
       if (list.length > 0) {
-        // default to first employee
         setEmpSelectedId(list[0].id);
         setEmpSelectedName(list[0].name);
       } else {
-        // "anyone" if none present
         setEmpSelectedId(null);
         setEmpSelectedName(t('anyone'));
       }
     } catch (err) {
       console.log('fetchEmployees error', err);
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [salonId, serviceID, isSubService]);
 
   useEffect(() => {
-    fetchEmployees();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchEmployees(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, []);
 
   // compute visible days array when month/year changes
@@ -176,9 +165,7 @@ const ChangeBook = ({route}) => {
       const d = new Date(currentYear, parseInt(currentMonth, 10) - 1, i + 1);
       const dayName = d.toLocaleString(
         i18n.language === 'ar' ? 'ar' : 'default',
-        {
-          weekday: 'short',
-        },
+        {weekday: 'short'},
       );
       return {id: i + 1, day: String(i + 1).padStart(2, '0'), dayName};
     }).filter(day =>
@@ -204,9 +191,11 @@ const ChangeBook = ({route}) => {
     }
   }, [currentMonth]);
   const prevMonth = useCallback(() => {
-    let m = parseInt(currentMonth, 10);
-    let y = currentYear;
-    if (y === currentRealYear && m === currentRealMonth) return;
+    let m = parseInt(currentMonth, 10),
+      y = currentYear;
+    if (y === currentRealYear && m === currentRealMonth) {
+      return;
+    }
     if (m === 1) {
       if (y > currentRealYear) {
         setCurrentMonth('12');
@@ -220,29 +209,30 @@ const ChangeBook = ({route}) => {
   // date string YYYY-MM-DD
   const date = `${currentYear}-${currentMonth}-${selectedDay}`;
 
-  // grid math (3 columns)
-  const gapH = 12;
-  const cols = 3;
-  const pillWidth = useMemo(() => {
-    const raw = Math.floor((containerWidth - gapH * (cols + 1)) / cols);
-    return Math.max(88, raw);
-  }, [containerWidth]);
+  // layout math for strict 3x4 grid
+  const gapH = 12; // horizontal gap between pills
+  const gapV = 12; // vertical gap between pills
+  const cols = 3,
+    rows = 4,
+    perPage = cols * rows;
+  const pillWidth = useMemo(
+    () => Math.floor((containerWidth - gapH * (cols + 1)) / cols),
+    [containerWidth],
+  );
   const pillHeight = useMemo(
     () => Math.max(52, Math.floor(pillWidth * 0.55)),
     [pillWidth],
   );
+  const pageHeight = useMemo(
+    () => rows * pillHeight + gapV * (rows + 1),
+    [rows, pillHeight, gapV],
+  );
 
-  // helper: clear selection (both state + ref)
-  const clearSelection = useCallback(() => {
-    setSelectedDate(null);
-    selectedDateRef.current = null;
-    setSelectedEndDate(null);
-  }, []);
-
-  // fetch times (uses cache if available)
+  // fetch times (uses cache if available) — store ONLY available slots
   useEffect(() => {
-    if (!selectedDay) return;
-
+    if (!selectedDay) {
+      return;
+    }
     const key = `${empSelectedId ?? 'any'}|${date}`;
 
     const cached = timeCacheRef.current.get(key);
@@ -250,14 +240,6 @@ const ChangeBook = ({route}) => {
       setTimeSlots(cached);
       setErrorT('');
       setLoadTime(false);
-
-      const currently = selectedDateRef.current;
-      if (currently) {
-        const found = cached.some(
-          s => s.available && s.start_time === currently,
-        );
-        if (!found) clearSelection();
-      }
       return;
     }
 
@@ -276,25 +258,24 @@ const ChangeBook = ({route}) => {
           isSubService,
         );
         const list = Array.isArray(res) ? res : [];
-        if (cancelled || fetchIdRef.current !== myFetchId) return;
-        timeCacheRef.current.set(key, list);
+        if (cancelled || fetchIdRef.current !== myFetchId) {
+          return;
+        }
+
+        // keep only available slots (available === true)
+        const avail = list.filter(s => s && s.available === true);
+        timeCacheRef.current.set(key, avail);
         if (mountedRef.current) {
-          setTimeSlots(list);
-          const currently = selectedDateRef.current;
-          if (currently) {
-            const found = list.some(
-              s => s.available && s.start_time === currently,
-            );
-            if (!found) clearSelection();
-          }
+          setTimeSlots(avail);
         }
       } catch (err) {
         console.log('getTime error', err);
-        if (cancelled || fetchIdRef.current !== myFetchId) return;
+        if (cancelled || fetchIdRef.current !== myFetchId) {
+          return;
+        }
         if (mountedRef.current) {
           setTimeSlots([]);
           setErrorT(err?.toString?.() ?? t('Error fetching times'));
-          clearSelection();
         }
       } finally {
         if (
@@ -311,31 +292,33 @@ const ChangeBook = ({route}) => {
     return () => {
       cancelled = true;
     };
-  }, [
-    empSelectedId,
-    date,
-    salonId,
-    serviceID,
-    isSubService,
-    selectedDay,
-    clearSelection,
-  ]);
+  }, [empSelectedId, date, salonId, serviceID, isSubService, selectedDay]);
 
-  // deleting item
-  const delete_item = useCallback(async id => {
-    try {
-      await deleteCart(id);
-      setCart(prev => {
-        const updated = prev.filter(x => x.cart_item_id !== id);
-        if (updated.length === 0) setIsVisibleCart(false);
-        return updated;
-      });
-    } catch (err) {
-      console.log('delete_item error', err);
+  // chunk into pages of perPage and pad with nulls to keep layout consistent
+  const pages = useMemo(() => {
+    const arr = Array.isArray(timeSlots)
+      ? timeSlots
+          .slice()
+          .sort((a, b) => a.start_time.localeCompare(b.start_time))
+      : [];
+    const p = [];
+    for (let i = 0; i < arr.length; i += perPage) {
+      const chunk = arr.slice(i, i + perPage);
+      // pad
+      while (chunk.length < perPage) {
+        chunk.push(null);
+      }
+      p.push(chunk);
     }
-  }, []);
+    // ensure at least one page so grid always renders
+    if (p.length === 0) {
+      const empty = new Array(perPage).fill(null);
+      p.push(empty);
+    }
+    return p;
+  }, [timeSlots]);
 
-  // UI: render employee row for modal
+  // employee row
   const renderEmployeeRow = useCallback(
     ({item}) => {
       const initials = (item.name || '')
@@ -344,9 +327,7 @@ const ChangeBook = ({route}) => {
         .slice(0, 2)
         .join('')
         .toUpperCase();
-
       const selected = empSelectedId === item.id;
-
       return (
         <TouchableOpacity
           style={[styles.empRow, selected && styles.empRowSelected]}
@@ -354,6 +335,10 @@ const ChangeBook = ({route}) => {
             setEmpSelectedId(item.id);
             setEmpSelectedName(item.name);
             setEmpModalVisible(false);
+            // clear selected time so user re-selects for new employee
+            setSelectedDate(null);
+            setSelectedEndDate(null);
+            // clear/load cache as necessary (doFetch useEffect will run)
           }}>
           <View
             style={[styles.empAvatar, selected && styles.empAvatarSelected]}>
@@ -384,32 +369,50 @@ const ChangeBook = ({route}) => {
     [empSelectedId],
   );
 
-  // Times rendering: pill
-  const renderTimeSlot = useCallback(
-    slot => {
-      if (!slot || !slot.available) return null;
-
-      const isSelected = selectedDateRef.current === slot.start_time;
-      const tm = moment(slot.start_time, 'HH:mm')
-        .locale(i18n.language === 'ar' ? 'ar' : 'en')
-        .format('hh:mm a');
-
-      const onPress = () => {
-        setSelectedDate(slot.start_time);
-        selectedDateRef.current = slot.start_time;
-        setSelectedEndDate(slot.end_time);
-      };
-
+  // times pill
+  const renderTimePill = useCallback(
+    (slot, index) => {
+      const isSelected = slot && selectedDate === slot.start_time;
+      const tm = slot
+        ? moment(slot.start_time, 'HH:mm')
+            .locale(i18n.language === 'ar' ? 'ar' : 'en')
+            .format('hh:mm a')
+        : '';
+      if (!slot) {
+        // placeholder
+        return (
+          <View
+            key={`ph-${index}`}
+            style={[
+              styles.timePillPlaceholder,
+              {
+                width: pillWidth,
+                height: pillHeight,
+                marginHorizontal: gapH / 2,
+                marginVertical: gapV / 2,
+              },
+            ]}
+          />
+        );
+      }
       return (
         <TouchableOpacity
           key={String(slot.id ?? Math.random())}
           activeOpacity={0.85}
-          onPress={onPress}
+          onPress={() => {
+            setSelectedDate(slot.start_time);
+            setSelectedEndDate(slot.end_time);
+          }}
           style={[
             styles.timePill,
             styles.timePillAvailable,
             isSelected && styles.timePillSelected,
-            {width: pillWidth, height: pillHeight},
+            {
+              width: pillWidth,
+              height: pillHeight,
+              marginHorizontal: gapH / 2,
+              marginVertical: gapV / 2,
+            },
           ]}>
           <Text style={[styles.timeText, isSelected && {color: '#fff'}]}>
             {tm}
@@ -417,128 +420,44 @@ const ChangeBook = ({route}) => {
         </TouchableOpacity>
       );
     },
-    [pillWidth, pillHeight],
+    [selectedDate, pillWidth, pillHeight],
   );
 
-  // booking / cart flows (stabilized & memoized)
-  const handleGoToCheckout = useCallback(async () => {
-    const currentSelected = selectedDateRef.current || selectedDate;
-    if (!currentSelected) {
-      Pop_up(1);
-      setIsVisibleMsg(true);
-      return;
-    }
+  // Confirm (change appointment)
+  const Confirm = useCallback(async () => {
+    setNum('');
     setSubLoading(true);
     try {
-      const res = await Cart(
-        salonId,
-        serviceID,
-        empSelectedId,
+      const Data = await ChangeAppoint(
+        appointmentID,
         date,
-        currentSelected,
+        selectedDate,
         selectedEndDate,
-        isSubService,
+        empSelectedId,
       );
-      if (res) {
+      if (Data) {
         setIsVisibleMsg(true);
-        Pop_up(9);
-        setNum(9);
-      }
-    } catch (err) {
-      const msg = String(err);
-      if (
-        msg ===
-        'You have items from a different salon in your cart. Would you like to clear your cart and add this item?'
-      ) {
-        Pop_up(4);
-        setNum(4);
-        setIsVisibleMsg(true);
-      } else if (
-        msg.includes(
-          'You already have an appointment in your cart during this time slot.',
-        )
-      ) {
-        Pop_up(8);
-        setNum(8);
-        setIsVisibleMsg(true);
-      } else {
-        Pop_up(8);
-        setNum(8);
-        setIsVisibleMsg(true);
-      }
-    } finally {
-      setSubLoading(false);
-    }
-  }, [
-    selectedDate,
-    selectedEndDate,
-    salonId,
-    serviceID,
-    empSelectedId,
-    date,
-    isSubService,
-  ]);
-
-  const Confirm = useCallback(async () => {
-    const currentSelected = selectedDateRef.current || selectedDate;
-    if (!currentSelected) {
-      Pop_up(1);
-      setIsVisibleMsg(true);
-      return;
-    }
-    setSubLoading2(true);
-    try {
-      const resp = await appointment();
-      if (resp) {
-        setIsVisibleCart(false);
         Pop_up(6);
         setNum(6);
-        setIsVisibleMsg(true);
       }
-    } catch (err) {
+    } catch (error) {
+      console.log('ChangeAppoint error', error);
       setNum(7);
-      setErrorC(err);
-      setIsVisibleCart(false);
+      setErrorC(error?.toString?.() ?? String(error));
       setIsVisibleMsg(true);
     } finally {
-      setSubLoading2(false);
+      if (mountedRef.current) {
+        setSubLoading(false);
+      }
     }
-  }, [selectedDate]);
+  }, [appointmentID, date, selectedDate, selectedEndDate, empSelectedId]);
 
   const Done = useCallback(() => {
     setIsVisibleMsg(false);
     navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{name: 'App'}],
-      }),
+      CommonActions.reset({index: 0, routes: [{name: 'App'}]}),
     );
   }, [navigation]);
-
-  const handleClearCart = useCallback(async () => {
-    try {
-      const res = await ClearCart();
-      if (res) {
-        Pop_up(5);
-        setNum(5);
-        setIsVisibleMsg(true);
-      }
-    } catch (err) {
-      console.log('ClearCart error', err);
-    }
-  }, []);
-
-  const fetchCart = useCallback(async () => {
-    try {
-      const res = await getCart();
-      if (res) {
-        setCart(res.data || []);
-        setTPrice(res);
-      }
-    } catch (err) {
-      console.log('getCart error', err);
-    }
-  }, []);
 
   const Pop_up = useCallback(numP => {
     switch (numP) {
@@ -549,20 +468,6 @@ const ChangeBook = ({route}) => {
             : 'Please select a suitable time',
         );
         break;
-      case 4:
-        setPop(
-          i18n.language === 'ar'
-            ? 'لديك عناصر من صالون آخر في سلتك. هل تريد مسح السلة وإضافة هذه الخدمة؟'
-            : 'You have items from another salon in your cart. Clear the cart and add this service?',
-        );
-        break;
-      case 5:
-        setPop(
-          i18n.language === 'ar'
-            ? 'تم مسح السلة. يمكنك الآن إتمام عملية الحجز'
-            : 'The cart has been cleared. You can now complete the appointment process.',
-        );
-        break;
       case 6:
         setPop(
           i18n.language === 'ar'
@@ -570,33 +475,17 @@ const ChangeBook = ({route}) => {
             : 'Booking completed successfully',
         );
         break;
-      case 8:
-        setPop(
-          i18n.language === 'ar'
-            ? 'لديك خدمة في نفس الوقت موجود في سلتك.'
-            : 'You have a service already in your cart at the same time.',
-        );
-        break;
-      case 9:
-        setPop(
-          i18n.language === 'ar'
-            ? 'تمت عملية الإضافة الى السلة بنجاح'
-            : 'The item was successfully added to the cart.',
-        );
-        break;
       default:
         setPop('Unknown error');
     }
   }, []);
 
-  // employee modal header label
   const employeeLabel = useMemo(
     () => empSelectedName || t('anyone'),
     [empSelectedName],
   );
   const monthsToDisplay = i18n.language === 'ar' ? arabicMonths : months;
 
-  // List header
   const ListHeaderComponent = useCallback(() => {
     return (
       <View>
@@ -604,7 +493,6 @@ const ChangeBook = ({route}) => {
           <Text style={styles.headerText}>{t('Select Your Date')}</Text>
         </View>
 
-        {/* Employee selector */}
         <View style={styles.empSelectRow}>
           <TouchableOpacity
             style={styles.empSelectBtn}
@@ -614,8 +502,7 @@ const ChangeBook = ({route}) => {
           </TouchableOpacity>
         </View>
 
-        {/* Month controls */}
-        <View style={{direction: 'ltr'}}>
+        <View>
           <View style={styles.monthSelector}>
             {i18n.language === 'en' ? (
               <TouchableOpacity
@@ -638,9 +525,11 @@ const ChangeBook = ({route}) => {
                 <Ionicons name="chevron-forward" size={20} />
               </TouchableOpacity>
             )}
+
             <Text style={styles.monthLabel}>
               {monthsToDisplay[parseInt(currentMonth, 10) - 1]}, {currentYear}
             </Text>
+
             {i18n.language === 'en' ? (
               <TouchableOpacity onPress={nextMonth}>
                 <Ionicons name="chevron-forward" size={20} />
@@ -675,8 +564,9 @@ const ChangeBook = ({route}) => {
                     {backgroundColor: isSelected ? Colors.primary : '#fff'},
                   ]}
                   onPress={() => {
-                    if (selectedDay === item.day) return;
-                    clearSelection();
+                    if (selectedDay === item.day) {
+                      return;
+                    }
                     setSelectedDay(item.day);
                   }}>
                   <Text
@@ -721,7 +611,6 @@ const ChangeBook = ({route}) => {
     currentMonth,
     currentYear,
     monthsToDisplay,
-    clearSelection,
     containerWidth,
   ]);
 
@@ -748,12 +637,12 @@ const ChangeBook = ({route}) => {
         <Loading />
       ) : (
         <FlatList
-          data={[{key: 'header'}]} // tiny non-empty data to make ListHeaderComponent reliable on iOS
+          data={[{key: 'header'}]}
           ListHeaderComponent={
             <>
               {ListHeaderComponent()}
 
-              {/* times grid */}
+              {/* pages */}
               {errorT ? (
                 <Text
                   style={[
@@ -769,23 +658,28 @@ const ChangeBook = ({route}) => {
                   style={{marginTop: 20}}
                 />
               ) : (
-                <View style={[styles.timesWrap, {width: '100%'}]}>
-                  {timeSlots.filter(s => s && s.available).length === 0 ? (
-                    <Text
-                      style={{
-                        textAlign: 'center',
-                        width: '100%',
-                        marginTop: 20,
-                      }}>
-                      {t('No times available')}
-                    </Text>
-                  ) : (
-                    timeSlots
-                      .filter(s => s && s.available)
-                      .sort((a, b) => a.start_time.localeCompare(b.start_time))
-                      .map(slot => renderTimeSlot(slot))
+                <FlatList
+                  data={pages}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  keyExtractor={(p, idx) => `page-${idx}`}
+                  renderItem={({item: page}) => (
+                    <View
+                      style={[
+                        styles.pageContainer,
+                        {width: containerWidth, height: pageHeight},
+                      ]}>
+                      {page.map((slot, idx) => renderTimePill(slot, idx))}
+                    </View>
                   )}
-                </View>
+                  contentContainerStyle={{
+                    paddingVertical: 8,
+                  }}
+                  extraData={[pages, selectedDate]}
+                  removeClippedSubviews={false}
+                  initialNumToRender={2}
+                />
               )}
 
               {/* bottom actions */}
@@ -796,23 +690,26 @@ const ChangeBook = ({route}) => {
                 <View style={styles.actionRow}>
                   <TouchableOpacity
                     style={styles.primaryBtn}
-                    onPress={handleGoToCheckout}
+                    onPress={() => {
+                      if (!selectedDate) {
+                        Pop_up(1);
+                        setIsVisibleMsg(true);
+                        return;
+                      }
+                      // go to confirm (in GitHub version this was 'add to cart' flow;
+                      // here we call Confirm because we're only changing appointment)
+                      Confirm();
+                    }}
                     disabled={subLoading}>
                     {subLoading ? (
                       <ActivityIndicator color="#fff" />
                     ) : (
-                      <Text style={styles.primaryBtnText}>
-                        {t('Go To Checkout')}
-                      </Text>
+                      <Text style={styles.primaryBtnText}>{t('Change')}</Text>
                     )}
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.secondaryBtn]}
-                    onPress={() => navigation.goBack()}>
-                    <Text style={[styles.primaryBtnText, {color: '#000'}]}>
-                      {t('Add More')}
-                    </Text>
-                  </TouchableOpacity>
+
+                  {/* keep Add More removed — GitHub change-only doesn't need it */}
+                  <View style={{width: '34%'}} />
                 </View>
               </View>
             </>
@@ -820,7 +717,7 @@ const ChangeBook = ({route}) => {
           keyExtractor={item => String(item.key)}
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
-          extraData={[timeSlots, selectedDay, selectedDate]}
+          extraData={[pages, days, selectedDay, selectedDate]}
         />
       )}
 
@@ -852,6 +749,9 @@ const ChangeBook = ({route}) => {
                 setEmpSelectedId(null);
                 setEmpSelectedName(t('anyone'));
                 setEmpModalVisible(false);
+                // clear selected time when switching to 'anyone'
+                setSelectedDate(null);
+                setSelectedEndDate(null);
               }}>
               <View
                 style={[
@@ -884,6 +784,7 @@ const ChangeBook = ({route}) => {
                 />
               )}
             </TouchableOpacity>
+
             <FlatList
               data={employees}
               renderItem={renderEmployeeRow}
@@ -923,17 +824,9 @@ const ChangeBook = ({route}) => {
             onPress={e => e.stopPropagation()}>
             <View style={{alignItems: 'center', marginBottom: 8}}>
               <Ionicons
-                name={
-                  num === 5 || num === 6 || num === 9
-                    ? 'checkmark-circle'
-                    : 'alert-circle'
-                }
+                name={num === 6 ? 'checkmark-circle' : 'alert-circle'}
                 size={36}
-                color={
-                  num === 5 || num === 6 || num === 9
-                    ? Colors.primary
-                    : '#e74c3c'
-                }
+                color={num === 6 ? Colors.primary : '#e74c3c'}
               />
             </View>
 
@@ -941,146 +834,13 @@ const ChangeBook = ({route}) => {
               {num === 7 ? errorC : pop}
             </Text>
 
-            {/* When num === 4 (different salon) show Clear + Close buttons,
-               otherwise show single Done/Close button */}
-            {num === 4 ? (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'center',
-                  gap: 8,
-                }}>
-                <TouchableOpacity
-                  style={[styles.primaryBtn, {width: 140, marginRight: 8}]}
-                  onPress={async () => {
-                    // close current popup, then call the existing clear flow
-                    setIsVisibleMsg(false);
-                    await handleClearCart();
-                  }}>
-                  <Text style={styles.primaryBtnText}>{t('Clear')}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.secondaryBtn,
-                    {width: 100, height: 56, justifyContent: 'center'},
-                  ]}
-                  onPress={() => setIsVisibleMsg(false)}>
-                  <Text style={[styles.primaryBtnText, {color: '#000'}]}>
-                    {t('Close')}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={[styles.primaryBtn, {alignSelf: 'center', width: 140}]}
-                onPress={() => (num === 6 ? Done() : setIsVisibleMsg(false))}>
-                <Text style={styles.primaryBtnText}>
-                  {num === 6 ? t('Done') : t('Close')}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* checkout modal */}
-      <Modal
-        visible={isVisibleCart}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setIsVisibleCart(false)}>
-        <Pressable style={styles.modal} onPress={() => setIsVisibleCart(false)}>
-          <Pressable style={styles.modal2} onPress={e => e.stopPropagation()}>
-            {subLoading2 ? (
-              <Loading />
-            ) : (
-              <>
-                <View
-                  style={[
-                    styles.modalHeaderContainer,
-                    {width: containerWidth},
-                  ]}>
-                  <Text style={styles.modalTitle}>{t('Checkout')}</Text>
-                  <Ionicons
-                    name="close-outline"
-                    size={25}
-                    onPress={() => setIsVisibleCart(false)}
-                  />
-                </View>
-
-                <FlatList
-                  data={cart}
-                  renderItem={({item}) => (
-                    <View style={styles.serv}>
-                      <View>
-                        <Text style={styles.text}>
-                          {i18n.language === 'ar'
-                            ? item?.service?.name_ar
-                            : item?.service?.name}
-                        </Text>
-                        <Text style={styles.title2}>
-                          {item?.employee?.name
-                            ?.split(' ')
-                            .slice(0, 2)
-                            .join(' ')}
-                        </Text>
-                      </View>
-                      <View style={{flexDirection: 'row'}}>
-                        <View>
-                          <Text style={{marginRight: 15}}>
-                            {String(item?.service?.price).slice(0, -3)}{' '}
-                            <Text style={{fontSize: 12}}>
-                              {i18n.language === 'ar' ? 'ر.ق' : 'QAR'}
-                            </Text>
-                          </Text>
-                          <Text style={[styles.title2, {fontSize: 10}]}>
-                            {item?.date.slice(5)} {t('at')} {item?.start_time}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          style={[
-                            styles.item3,
-                            {
-                              paddingLeft: 15,
-                              paddingRight: 15,
-                              backgroundColor: '#000',
-                            },
-                          ]}
-                          onPress={() => delete_item(item?.cart_item_id)}>
-                          <Text style={[styles.title2, {color: '#fff'}]}>
-                            {t('Remove')}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                  keyExtractor={item => String(item.cart_item_id)}
-                  style={[styles.serviceList, {width: containerWidth}]}
-                  removeClippedSubviews={false}
-                />
-
-                {cart.length > 0 && (
-                  <View style={styles.totalRow}>
-                    <Text style={styles.title2}>{t('Total')}</Text>
-                    <Text style={styles.priceText}>
-                      {String(TPrice?.total_price ?? '0').slice(0, -3)}{' '}
-                      <Text style={{fontSize: 12}}>
-                        {i18n.language === 'ar' ? 'ر.ق' : 'QAR'}
-                      </Text>
-                    </Text>
-                  </View>
-                )}
-
-                <View style={styles.checkoutButtonsContainer}>
-                  <TouchableOpacity
-                    style={styles.confirmButton}
-                    onPress={Confirm}>
-                    <Text style={styles.buttonText}>{t('Confirm')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+            <TouchableOpacity
+              style={[styles.primaryBtn, {alignSelf: 'center', width: 140}]}
+              onPress={() => (num === 6 ? Done() : setIsVisibleMsg(false))}>
+              <Text style={styles.primaryBtnText}>
+                {num === 6 ? t('Done') : t('Close')}
+              </Text>
+            </TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1089,22 +849,19 @@ const ChangeBook = ({route}) => {
 };
 
 const styles = StyleSheet.create({
-  // container & header
   container: {
     flex: 1,
-    backgroundColor: '#fff',
     paddingHorizontal: 20,
     paddingBottom: 20,
+    backgroundColor: '#fff',
   },
   salonInfo: {
     flexDirection: 'row',
     padding: 15,
     direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
-  // header rows
   headerRow: {paddingVertical: 8},
   headerText: {fontSize: 16, fontWeight: '600', alignSelf: 'flex-start'},
-  // employee select
   empSelectRow: {marginTop: 8, marginBottom: 8, alignItems: 'center'},
   empSelectBtn: {
     width: '90%',
@@ -1139,16 +896,15 @@ const styles = StyleSheet.create({
   },
   dayNumber: {fontSize: 18, fontWeight: '700'},
   dayName: {fontSize: 12, marginTop: 6},
-  // times
-  timesWrap: {
+  // times: page container and pills
+  pageContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    marginTop: 8,
+    alignItems: 'center',
   },
   timePill: {
-    borderRadius: 18,
-    margin: 8,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 2,
@@ -1157,19 +913,17 @@ const styles = StyleSheet.create({
     shadowOffset: {width: 0, height: 3},
     shadowRadius: 6,
   },
+  timePillPlaceholder: {backgroundColor: 'transparent'},
   timePillAvailable: {
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#eee',
-    paddingVertical: 6,
   },
-  timePillDisabled: {backgroundColor: Colors.border},
   timePillSelected: {
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
   timeText: {fontWeight: '700'},
-  timeSub: {fontSize: 11, color: '#777', marginTop: 4},
   // actions
   actionRow: {
     flexDirection: 'row',
@@ -1185,16 +939,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryBtnText: {color: '#fff', fontWeight: '700'},
-  secondaryBtn: {
-    width: '34%',
-    height: 56,
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   smallText: {fontSize: 12, color: Colors.black3},
   // employee modal
   empModalOverlay: {
@@ -1250,46 +994,24 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modal2: {
+    width: '100%',
+    borderTopLeftRadius: 50,
+    borderTopRightRadius: 50,
     backgroundColor: '#fff',
-    padding: 18,
-    borderRadius: 12,
-    alignItems: 'center',
+    padding: 15,
+    maxHeight: height * 0.8,
+    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
   modalHeaderContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    width: '100%',
+    padding: 10,
     marginBottom: 12,
+    width: screenWidth * 0.9,
   },
   modalTitle: {fontSize: 16, fontWeight: '600'},
-  serv: {
-    paddingVertical: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  serviceList: {width: '100%', marginBottom: 8},
-  text: {fontSize: 14, fontWeight: '600'},
-  title2: {fontSize: 12, fontWeight: '700', color: Colors.black2},
-  priceText: {fontWeight: '800'},
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    padding: 10,
-  },
-  checkoutButtonsContainer: {alignItems: 'center'},
-  confirmButton: {
-    width: '90%',
-    height: 56,
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {color: '#fff', fontWeight: '700'},
-  contentContainer: {paddingBottom: 30, backgroundColor: '#fff'},
+  contentContainer: {paddingBottom: 30},
 });
 
 export default ChangeBook;
