@@ -1,12 +1,14 @@
+/* eslint-disable react-native/no-inline-styles */
 import React, {useMemo, useState} from 'react';
 import {TouchableOpacity, Text, StyleSheet, View} from 'react-native';
 import FastImage from 'react-native-fast-image';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import hostImge from '../../context/hostImge';
 import {Colors} from '../../assets/constants';
 import buildImageUri from '../../helpers/buildimageuri';
 
 const SalonGridItem = ({item, size = 100, onPress, isRTL = false}) => {
+  console.log('Rendering SalonGridItem', item);
+  const appLogo = require('../../assets/images/logo22.jpg');
   //data normalization
   const isSalon = (!item?.images?.logo || !item?.name) && !!item?.salon;
   const data = isSalon ? item.salon : item;
@@ -19,7 +21,11 @@ const SalonGridItem = ({item, size = 100, onPress, isRTL = false}) => {
     [data?.images?.logo],
   );
 
-  const showImage = !!imageUri && !imgError;
+  const showImage =
+    !!imageUri &&
+    !imgError &&
+    imageUri !==
+      'https://dashboard.ontimeqa.com/backend/assets/images/default-salon-logo.png';
 
   return (
     <TouchableOpacity
@@ -49,10 +55,19 @@ const SalonGridItem = ({item, size = 100, onPress, isRTL = false}) => {
             styles.fallback,
             {width: imageSize, height: imageSize, borderRadius: imageSize / 2},
           ]}>
-          <Ionicons
-            name="image-outline"
-            size={Math.round(imageSize * 0.48)}
-            color={Colors.primary}
+          <FastImage
+            source={appLogo}
+            style={[
+              styles.image,
+              {
+                width: imageSize,
+                height: imageSize,
+                borderRadius: imageSize / 2,
+                borderColor: Colors.primary,
+                borderWidth: 1,
+              },
+            ]}
+            resizeMode="cover"
           />
         </View>
       )}

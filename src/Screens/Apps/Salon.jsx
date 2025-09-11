@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Platform,
+  Modal,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -33,11 +34,8 @@ import {t} from 'i18next';
 import {SvgXml} from 'react-native-svg';
 import hostImge from '../../context/hostImge';
 
-// -------- in-memory cache (module-scoped) --------
-// Keyed by salonId; values: { salon, categories, isFav, lastFetchedAt(optional) }
 const salonCache = new Map();
 
-// --- svg cache & SvgImage component (same as before)
 const svgCache = new Map();
 const SvgImage = React.memo(({imageUrl, width = 80, height = 80}) => {
   const [xml, setXml] = useState(
@@ -74,7 +72,6 @@ const SvgImage = React.memo(({imageUrl, width = 80, height = 80}) => {
   return <SvgXml xml={xml} width={width} height={height} />;
 });
 
-// --- Header component
 const Header = React.memo(({onBack, onToggleFav, isFav, isRTL}) => {
   return (
     <View style={styles.header}>
@@ -96,7 +93,6 @@ const Header = React.memo(({onBack, onToggleFav, isFav, isRTL}) => {
   );
 });
 
-// --- Category item
 const CategoryItem = React.memo(({item, onPress, isRTL, itemWidth}) => {
   const title = isRTL ? item.name_ar : item.name;
   return (
@@ -111,7 +107,6 @@ const CategoryItem = React.memo(({item, onPress, isRTL, itemWidth}) => {
   );
 });
 
-// --- Auth modal
 const AuthModal = ({visible, onClose, onLogin}) => {
   if (!visible) {
     return null;
@@ -146,14 +141,12 @@ const areCategoriesDifferent = (a = [], b = []) => {
   return false;
 };
 
-// --- data hook using in-memory cache (no persistence) ---
-// NOTE: returns cacheLoaded boolean to let caller nudge FlatList layout when cached data used
 function useSalonDataWithCache(salonId, isAuth) {
   const [salon, setSalon] = useState(null);
   const [categories, setCategories] = useState([]);
   const [isFav, setIsFav] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [cacheLoaded, setCacheLoaded] = useState(false); // <-- new
+  const [cacheLoaded, setCacheLoaded] = useState(false);
 
   // keep a ref to mounted to avoid updates after unmount
   const mountedRef = useRef(true);
@@ -168,7 +161,7 @@ function useSalonDataWithCache(salonId, isAuth) {
     let cancelled = false;
     setLoading(true);
     setCacheLoaded(false);
-
+    console.log('Fetching salon data for ID:', salonId);
     const cached = salonCache.get(String(salonId));
     if (cached) {
       // show cache immediately
@@ -180,6 +173,7 @@ function useSalonDataWithCache(salonId, isAuth) {
         setIsFav(!!cached.isFav);
         setLoading(false);
         setCacheLoaded(true); // indicate we rendered from cache
+        console.log('Salon data from cache:', cached.salon); // <-- log cached salon
       }
 
       // background fetch to confirm latest data; only update if changed
@@ -222,6 +216,7 @@ function useSalonDataWithCache(salonId, isAuth) {
               setSalon(incomingSalon);
               setCategories(incomingCategories);
               setIsFav(incomingFav);
+              console.log('Salon data after background fetch:', incomingSalon); // <-- log fetched salon
             }
           }
         })
@@ -259,6 +254,7 @@ function useSalonDataWithCache(salonId, isAuth) {
           setSalon(incomingSalon);
           setCategories(incomingCategories);
           setIsFav(incomingFav);
+          console.log('Salon data after initial fetch:', incomingSalon); // <-- log fetched salon
         }
       })
       .catch(err => {
@@ -275,7 +271,6 @@ function useSalonDataWithCache(salonId, isAuth) {
     };
   }, [salonId, isAuth]);
 
-  // expose setter for isFav so toggleFavorite can update cache + state
   const setIsFavAndCache = useCallback(
     next => {
       setIsFav(next);
@@ -301,37 +296,99 @@ function useSalonDataWithCache(salonId, isAuth) {
 
 // --- Main screen
 const SalonScreen = ({route}) => {
+  const appLogo = require('../../assets/images/logo.jpg');
   const {salonId} = route.params;
   const {width} = useWindowDimensions();
   const isRTL = i18n.language === 'ar';
   const navigation = useNavigation();
   const {isAuth} = React.useContext(AuthContext);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const {salon, categories, isFav, setIsFav, loading, cacheLoaded} =
     useSalonDataWithCache(salonId, isAuth);
   const [authModal, setAuthModal] = useState(false);
 
+  // horizontal padding for categories: 5% each side
+  const horizontalPadding = useMemo(() => Math.round(width * 0.05), [width]);
+
+  // columns (same logic as before)
   const numColumns = useMemo(
     () => (width > 600 ? 3 : width > 300 ? 3 : 2),
     [width],
   );
+
+  // item width inside available area (exclude the 2 * horizontalPadding)
   const itemWidth = useMemo(() => {
     const columns = numColumns;
-    const padding = 16;
-    return (width * 0.8 - padding * (columns + 1)) / columns;
-  }, [width, numColumns]);
+    const gapBetweenItems = 16; // same spacing as before between items
+    const availableWidth = width - horizontalPadding * 2;
+    return (availableWidth - gapBetweenItems * (columns + 1)) / columns;
+  }, [width, numColumns, horizontalPadding]);
 
   const handleGoBack = useCallback(() => navigation.goBack(), [navigation]);
-
-  const openMap = useCallback(() => {
-    if (!salon?.location?.address) {
-      return;
+  const makeCall = () => {
+    if (salon?.contact_info?.phone) {
+      setShowConfirm(true);
     }
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-      salon.location.address,
-    )}`;
-    Linking.openURL(url);
-  }, [salon]);
+  };
+
+  // NEW: confirm call action
+  const confirmCall = () => {
+    setShowConfirm(false);
+    if (salon?.contact_info?.phone) {
+      Linking.openURL(`tel:${salon.contact_info.phone}`);
+    }
+  };
+  const openAddressMap = async (lat, lng, label) => {
+    try {
+      if (Platform.OS === 'android') {
+        // Android → system intent chooser (Google Maps, Waze, Bing, etc.)
+        const url = `geo:${lat},${lng}?q=${lat},${lng}(${label})`;
+        const supported = await Linking.canOpenURL(url);
+        if (supported) {
+          await Linking.openURL(url);
+        } else {
+          // fallback to Google Maps web if no map app available
+          await Linking.openURL(
+            `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+          );
+        }
+      } else {
+        // iOS → open Apple Maps by default
+        const appleUrl = `http://maps.apple.com/?ll=${lat},${lng}&q=${label}`;
+        const googleUrl = `comgooglemaps://?q=${lat},${lng}`;
+        const wazeUrl = `waze://?ll=${lat},${lng}&navigate=yes`;
+
+        // Try Apple Maps first
+        const supportedApple = await Linking.canOpenURL(appleUrl);
+        if (supportedApple) {
+          await Linking.openURL(appleUrl);
+          return;
+        }
+
+        // Try Google Maps if installed
+        const supportedGoogle = await Linking.canOpenURL(googleUrl);
+        if (supportedGoogle) {
+          await Linking.openURL(googleUrl);
+          return;
+        }
+
+        // Try Waze if installed
+        const supportedWaze = await Linking.canOpenURL(wazeUrl);
+        if (supportedWaze) {
+          await Linking.openURL(wazeUrl);
+          return;
+        }
+
+        // fallback → open Google Maps in Safari
+        await Linking.openURL(
+          `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+        );
+      }
+    } catch (error) {
+      console.error('Error opening map:', error);
+    }
+  };
 
   const toggleFavorite = useCallback(async () => {
     if (!isAuth) {
@@ -369,9 +426,12 @@ const SalonScreen = ({route}) => {
   );
 
   // cached logo
-  const logoSource = salon?.images?.logo
-    ? {uri: `${hostImge}${salon.images.logo}`, cache: 'force-cache'}
-    : null;
+  const logoSource =
+    salon?.images?.logo &&
+    salon?.images?.logo !==
+      'https://dashboard.ontimeqa.com/backend/assets/images/default-salon-logo.png'
+      ? {uri: `${hostImge}${salon.images.logo}`}
+      : appLogo;
 
   // FlatList ref for nudging layout when cached loaded
   const flatRef = useRef(null);
@@ -403,52 +463,83 @@ const SalonScreen = ({route}) => {
   const ListHeader = useCallback(() => {
     return (
       <View>
-        <View style={styles.salonInfoWrap}>
-          {logoSource ? (
-            <Image
-              source={logoSource}
-              style={styles.salonLogo}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[styles.salonLogo, styles.logoPlaceholder]} />
-          )}
+        {/* keep salon info centered in 90% inner wrapper */}
+        <View style={{width, alignItems: 'center'}}>
+          <View style={{width: '90%'}}>
+            <View style={styles.salonInfoWrap}>
+              <View
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                }}>
+                {logoSource ? (
+                  <Image
+                    source={logoSource}
+                    style={styles.salonLogo}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[styles.salonLogo, styles.logoPlaceholder]} />
+                )}
 
-          <View style={styles.salonDetails}>
-            <Text style={styles.title}>
-              {isRTL ? salon?.name_ar : salon?.name}
-            </Text>
-            <Text style={styles.description}>
-              {isRTL ? salon?.description_ar : salon?.description}
-            </Text>
-            <View
-              style={[
-                styles.location,
-                isRTL && {flexDirection: 'row-reverse'},
-              ]}>
-              <Ionicons name="location" size={15} color={Colors.primary} />
-              <Text
-                style={[
-                  styles.locationText,
-                  isRTL && {marginLeft: 0, marginRight: 5},
-                ]}
-                numberOfLines={2}>
-                {salon?.location?.address}
-              </Text>
+                <View
+                  style={[
+                    styles.salonDetails,
+                    {
+                      paddingLeft: 15,
+                    },
+                  ]}>
+                  <Text style={styles.title}>
+                    {isRTL ? salon?.name_ar : salon?.name}
+                  </Text>
+                  <Text style={styles.description}>
+                    {isRTL ? salon?.description_ar : salon?.description}
+                  </Text>
+                  <View
+                    style={[
+                      styles.location,
+                      {
+                        flexDirection:
+                          isRTL && Platform.OS === 'ios'
+                            ? 'row-reverse'
+                            : 'row',
+                      },
+                    ]}>
+                    <Ionicons
+                      name="location"
+                      size={15}
+                      color={Colors.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.locationText,
+                        isRTL && {marginLeft: 0, marginRight: 5},
+                      ]}
+                      numberOfLines={2}>
+                      {salon?.location?.address}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <View style={[styles.mapButtonContainer]}>
+                <TouchableOpacity
+                  style={styles.mapButton}
+                  onPress={openAddressMap}>
+                  <Text style={styles.mapButtonText}>{t('Google Map')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.mapButton, styles.callButton]}
+                  onPress={makeCall}>
+                  <Text style={[styles.mapButtonText, styles.callButtonText]}>
+                    {t('Call')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-
-          <View
-            style={[
-              styles.mapButtonContainer,
-              isRTL && {left: 15, right: 'auto'},
-            ]}>
-            <TouchableOpacity style={styles.mapButton} onPress={openMap}>
-              <Text style={styles.mapButtonText}>{t('Google Map')}</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
+        {/* full-width slider (AdSlider internally uses full width pages and 5px image padding) */}
         {Array.isArray(salon?.banners) && salon.banners.length > 0 ? (
           <View style={styles.adContainer}>
             <AdSlider paidAds={salon.banners} />
@@ -458,7 +549,7 @@ const SalonScreen = ({route}) => {
         )}
       </View>
     );
-  }, [logoSource, salon, isRTL, openMap]);
+  }, [logoSource, salon, isRTL, width]);
 
   return (
     <SafeAreaView
@@ -485,12 +576,15 @@ const SalonScreen = ({route}) => {
           }
           numColumns={numColumns}
           key={numColumns}
-          contentContainerStyle={styles.categoriesContainer}
+          contentContainerStyle={[
+            styles.categoriesContainer,
+            {alignItems: 'center', paddingHorizontal: horizontalPadding},
+          ]}
           style={styles.categoriesList}
           initialNumToRender={6}
           windowSize={9}
-          // Important: disable removeClippedSubviews on iOS to avoid blank-on-render issues
-          removeClippedSubviews={Platform.OS === 'android'}
+          // disable aggressive clipping to avoid issues during orientation/RTL changes
+          removeClippedSubviews={false}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={ListHeader}
           ListHeaderComponentStyle={{paddingBottom: 10}}
@@ -508,11 +602,111 @@ const SalonScreen = ({route}) => {
         onClose={() => setAuthModal(false)}
         onLogin={() => navigation.navigate('Auth', {screen: 'LoginOrSignup'})}
       />
+      <Modal
+        transparent
+        visible={showConfirm}
+        onRequestClose={() => setShowConfirm(false)}>
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmBox}>
+            <Text style={styles.confirmTitle}>{t('Confirmation')}</Text>
+            <Text style={styles.confirmText}>
+              {t('Are you sure you want to call?')}
+            </Text>
+            <Text style={styles.confirmNumber}>
+              {salon?.contact_info?.phone}
+            </Text>
+
+            <View style={styles.confirmButtonsRow}>
+              <TouchableOpacity
+                style={[
+                  styles.confirmButton,
+                  {backgroundColor: Colors.primary},
+                ]}
+                onPress={confirmCall}>
+                <Text style={styles.confirmButtonText}>{t('Call')}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.cancelButton,
+                  {
+                    backgroundColor: '#fff',
+                    borderWidth: 1,
+                    borderColor: '#C5AA96',
+                  },
+                ]}
+                onPress={() => setShowConfirm(false)}>
+                <Text style={[styles.confirmButtonText, {color: '#C5AA96'}]}>
+                  {t('Cancel')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmBox: {
+    width: '80%',
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  confirmTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  confirmText: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  confirmNumber: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 20,
+  },
+  confirmButtonsRow: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+  },
+  confirmButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 10,
+    border: 1,
+    borderColor: '#C5AA96',
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
+  cancelButtonText: {
+    color: '#C5AA96',
+    fontWeight: '600',
+  },
+  confirmButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
   safeArea: {flex: 1, backgroundColor: '#fff'},
   header: {
     flexDirection: 'row',
@@ -522,16 +716,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   salonInfoWrap: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     marginTop: 10,
     padding: 15,
-    alignItems: 'center',
+    gap: 30,
+    alignItems: 'flex-start',
     position: 'relative',
   },
-  salonLogo: {width: 75, height: 75, borderRadius: 50},
+  salonLogo: {width: 75, height: 85, borderRadius: 10},
   logoPlaceholder: {backgroundColor: Colors.border},
-  salonDetails: {flex: 1, paddingHorizontal: 15},
-  title: {fontSize: 18, fontWeight: '700', marginBottom: 10},
+  salonDetails: {flex: 1},
+  title: {fontSize: 18, fontWeight: '700', marginBottom: 5},
   description: {
     fontSize: 12,
     fontWeight: '700',
@@ -539,8 +734,6 @@ const styles = StyleSheet.create({
     color: Colors.black3,
   },
   location: {
-    flexDirection: 'row',
-    alignItems: 'center',
     flexWrap: 'wrap',
     maxWidth: '90%',
   },
@@ -549,24 +742,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.primary,
     marginLeft: 5,
-    flex: 1,
   },
-  mapButtonContainer: {
-    position: 'absolute',
-    alignSelf: 'flex-end',
-    bottom: 5,
-    right: 15,
-  },
+  mapButtonContainer: {flexDirection: 'row', gap: 10},
   mapButton: {
     minWidth: 113,
-    height: 27,
+    height: 35,
     backgroundColor: '#000',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
   },
+  callButton: {
+    backgroundColor: 'transparent',
+    borderColor: Colors.primary,
+    borderWidth: 1,
+  },
   mapButtonText: {color: '#fff', fontSize: 10},
+  callButtonText: {color: Colors.primary, fontSize: 10},
   adContainer: {marginVertical: 20},
   separator: {
     borderWidth: 1,
@@ -576,7 +769,7 @@ const styles = StyleSheet.create({
     marginVertical: 15,
     alignSelf: 'center',
   },
-  categoriesList: {alignSelf: 'center', width: '90%'},
+  categoriesList: {width: '100%'}, // full width list so header/slider can be full width
   categoriesContainer: {justifyContent: 'space-around', paddingVertical: 10},
   categoryItem: {
     alignItems: 'center',

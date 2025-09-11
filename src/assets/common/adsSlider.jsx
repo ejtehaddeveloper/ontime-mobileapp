@@ -7,10 +7,11 @@ import {
   StyleSheet,
   Animated,
   useWindowDimensions,
+  I18nManager,
 } from 'react-native';
 import {Colors} from '../constants';
 
-export default function AdSlider({paidAds}) {
+export default function AdSlider({paidAds = []}) {
   const scrollX = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -28,7 +29,7 @@ export default function AdSlider({paidAds}) {
         currentIndex === paidAds.length - 1 ? 0 : currentIndex + 1;
       if (scrollRef.current) {
         scrollRef.current.scrollTo({
-          x: nextIndex * width,
+          x: nextIndex * width, // paging uses full screen width
           animated: true,
         });
       }
@@ -60,8 +61,13 @@ export default function AdSlider({paidAds}) {
     }, 3000);
   };
 
+  // containerWidth is the full screen width (used for paging math)
+  const containerWidth = width;
+  // imageWidth is full screen minus 5px padding on each side -> visible gap 5px each side
+  const imageWidth = Math.max(0, Math.round(width - 10));
+
   return (
-    <View style={[styles.container, {width}]}>
+    <View style={[styles.container, {width: containerWidth}]}>
       <Animated.ScrollView
         ref={scrollRef}
         horizontal
@@ -71,19 +77,33 @@ export default function AdSlider({paidAds}) {
           [{nativeEvent: {contentOffset: {x: scrollX}}}],
           {useNativeDriver: false, listener: handleScroll},
         )}
-        scrollEventThrottle={16}>
+        scrollEventThrottle={16}
+        removeClippedSubviews={false}
+        contentContainerStyle={{
+          flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+        }}>
         {paidAds.map((item, index) => (
           <View
-            key={item.id}
-            style={[styles.adContainer, {width}]}>
+            key={item.id ?? index}
+            // each page keeps full width for paging; paddingHorizontal creates visible 5px margins
+            style={[
+              styles.adContainer,
+              {
+                width: containerWidth,
+                overflow: 'hidden',
+                paddingHorizontal: 5, // 5px gap each side
+              },
+            ]}>
             <Image
               source={{uri: item.image_url}}
-              style={[styles.adImage, {borderRadius: 20}]}
+              // image uses containerWidth - 10 so it visually sits with 5px margins left/right
+              style={[styles.adImage, {width: imageWidth, borderRadius: 20}]}
               resizeMode="cover"
             />
           </View>
         ))}
       </Animated.ScrollView>
+
       <View style={styles.pagination}>
         {paidAds.map((_, index) => (
           <View
@@ -112,7 +132,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   adImage: {
-    width: '95%',
     height: '90%',
     borderRadius: 20,
   },

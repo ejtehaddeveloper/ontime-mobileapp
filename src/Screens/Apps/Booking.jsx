@@ -1,7 +1,10 @@
+/* eslint-disable react/no-unstable-nested-components */
+/* eslint-disable react-native/no-inline-styles */
 /*
-  Booking Screen — Icon fallback for missing salon image
-  - If salon image is missing, show a consistent app-style icon (Ionicons) inside the avatar box
-  - Keeps card visuals, status badge, pagination and RTL support
+  Booking Screen — deterministic pagination using pagesRef (stable while scrolling)
+  - store each page separately, rebuild deterministic merged list from pages
+  - dedupe by id (first-seen from page 1..N wins)
+  - sort within page by _ts descending
 */
 
 import React, {useCallback, useContext, useMemo, useRef, useState} from 'react';
@@ -16,7 +19,6 @@ import {
   RefreshControl,
   Platform,
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import {
   useNavigation,
   CommonActions,
@@ -26,53 +28,217 @@ import {AuthContext} from '../../context/AuthContext';
 import {getAppoint} from '../../context/api';
 import {Colors} from '../../assets/constants';
 import i18n from '../../assets/locales/i18';
-import {useTranslation} from 'react-i18next';
 import {screenHeight} from '../../assets/constants/ScreenSize';
+import {t} from 'i18next';
 
+const DEBUG = false; // set true to get detailed logs
 const TABS = [
   {id: 1, name: 'Booked', name_ar: 'محجوز', status: ['pending', 'rescheduled']},
   {id: 2, name: 'Completed', name_ar: 'اكتمل', status: ['completed']},
   {id: 3, name: 'Cancelled', name_ar: 'ألغي', status: ['cancelled']},
 ];
+const appLogo = require('../../assets/images/logo22.jpg');
 
-// Lightweight bookings hook (same behavior as before)
+function parseToTs(item) {
+  if (!item) return 0;
+  const tryParse = s => {
+    if (!s) return NaN;
+    const parsed = Date.parse(s);
+    if (!isNaN(parsed)) return parsed;
+    return NaN;
+  };
+
+  if (item.created_at) {
+    const p = tryParse(item.created_at);
+    if (!isNaN(p)) return p;
+  }
+
+  if (item.date && item.start_time) {
+    const combined = `${item.date} ${item.start_time}`;
+    const p = tryParse(combined);
+    if (!isNaN(p)) return p;
+    try {
+      const iso = `${item.date}T${item.start_time}`;
+      const parsed = Date.parse(iso);
+      if (!isNaN(parsed)) return parsed;
+    } catch (e) {}
+  }
+
+  if (item.date) {
+    const p = tryParse(item.date);
+    if (!isNaN(p)) return p;
+  }
+
+  const idNum = Number(item.id);
+  if (!isNaN(idNum)) return idNum;
+
+  return 0;
+}
+
+function normalizeAndAttachTs(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map(it => {
+    const copy = {...it};
+    copy._ts = parseToTs(it) || 0;
+    return copy;
+  });
+}
+
+function sortDescByTsThenId(arr) {
+  return arr.slice().sort((a, b) => {
+    if ((b._ts || 0) !== (a._ts || 0)) return (b._ts || 0) - (a._ts || 0);
+    const idA = Number(a.id) || 0;
+    const idB = Number(b.id) || 0;
+    return idB - idA;
+  });
+}
+
+// Rebuild merged list from pagesRef (1..maxPage), preserving page order, deduping by id (first-seen wins)
+function rebuildFromPages(pagesRef) {
+  const pages = pagesRef.current || {};
+  const pageNumbers = Object.keys(pages)
+    .map(n => Number(n))
+    .filter(n => !isNaN(n))
+    .sort((a, b) => a - b); // 1,2,3...
+  const seen = new Set();
+  const merged = [];
+  for (const p of pageNumbers) {
+    const arr = pages[p] || [];
+    for (const it of arr) {
+      const key = String(it.id);
+      if (!seen.has(key)) {
+        merged.push(it);
+        seen.add(key);
+      }
+    }
+  }
+  return merged;
+}
+
+// Lightweight bookings hook using pagesRef
 function useBookings(initialPage = 1) {
   const [items, setItems] = useState([]);
+  const itemsRef = useRef([]);
+  const setItemsState = useCallback(next => {
+    setItems(prev => {
+      const nextVal = typeof next === 'function' ? next(prev) : next;
+      itemsRef.current = Array.isArray(nextVal) ? nextVal : [];
+      return nextVal;
+    });
+  }, []);
+
+  // pagesRef: { [pageNumber]: Array<normalized items> }
+  const pagesRef = useRef({});
+  const maxPageRef = useRef(initialPage);
+  const fetchingPagesRef = useRef(new Set()); // pages currently being fetched
+
   const [page, setPage] = useState(initialPage);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const pendingFetchRef = useRef(false);
 
-  const fetchPage = useCallback(async (pageToFetch = 1, replace = false) => {
-    if (pendingFetchRef.current) return;
-    pendingFetchRef.current = true;
-    if (pageToFetch === 1 && !replace) setLoading(true);
-    try {
-      const data = await getAppoint(pageToFetch);
-      const arr = Array.isArray(data) ? data : [];
-      if (replace || pageToFetch === 1) setItems(arr);
-      else setItems(prev => [...prev, ...arr]);
-      setHasMore(arr.length > 0);
-      setPage(pageToFetch);
-    } catch (err) {
-      console.log('useBookings fetch error', err);
-    } finally {
-      pendingFetchRef.current = false;
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  // fetch a page (can be called concurrently for different page numbers)
+  const fetchPage = useCallback(
+    async (pageToFetch = 1, replace = false) => {
+      // prevent duplicate fetch for same page
+      if (fetchingPagesRef.current.has(pageToFetch)) {
+        if (DEBUG)
+          console.log(
+            '[BOOKINGS] fetch skipped (already fetching) page',
+            pageToFetch,
+          );
+        return;
+      }
+      fetchingPagesRef.current.add(pageToFetch);
+      if (pageToFetch === 1 && !replace) {
+        setLoading(true);
+      }
+      try {
+        const data = await getAppoint(pageToFetch);
+        const arr = Array.isArray(data) ? data : [];
+        const normalized = normalizeAndAttachTs(arr);
+        // sort within page newest->oldest for stable page ordering
+        const pageSorted = sortDescByTsThenId(normalized);
+
+        // if page1 with replace:true we set pagesRef[1] = pageSorted
+        if (replace && pageToFetch === 1) {
+          // keep other pages intact: just update page 1 and rebuild
+          pagesRef.current = {
+            ...pagesRef.current,
+            [1]: pageSorted,
+          };
+          // don't reset maxPageRef here; keep loaded older pages if present
+          if (DEBUG) {
+            console.log(
+              '[BOOKINGS] page1 replace: count=',
+              pageSorted.length,
+              'existingPages=',
+              Object.keys(pagesRef.current).length,
+            );
+          }
+        } else {
+          // regular set page
+          pagesRef.current = {
+            ...pagesRef.current,
+            [pageToFetch]: pageSorted,
+          };
+          if (pageToFetch > (maxPageRef.current || 0)) {
+            maxPageRef.current = pageToFetch;
+          }
+          if (DEBUG) {
+            console.log(
+              '[BOOKINGS] stored page',
+              pageToFetch,
+              'count=',
+              pageSorted.length,
+            );
+          }
+        }
+
+        // rebuild deterministic merged list from pages (1..max)
+        const merged = rebuildFromPages(pagesRef);
+        setItemsState(merged);
+
+        setHasMore(arr.length > 0);
+        setPage(prev => (pageToFetch > prev ? pageToFetch : prev));
+        if (DEBUG) {
+          console.log(
+            `[BOOKINGS] after storing page ${pageToFetch} => merged count=${merged.length}`,
+          );
+          if (merged.length) {
+            console.log(
+              'first5:',
+              merged.slice(0, 5).map(it => ({id: it.id, _ts: it._ts})),
+            );
+          }
+        }
+      } catch (err) {
+        console.log('useBookings fetch error', err);
+      } finally {
+        fetchingPagesRef.current.delete(pageToFetch);
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [setItemsState],
+  );
 
   const refresh = useCallback(() => {
     setRefreshing(true);
+    // page1 replace (but rebuild keeps other pages unless you want to wipe them)
     fetchPage(1, true);
   }, [fetchPage]);
 
   const loadMore = useCallback(() => {
-    if (!hasMore || pendingFetchRef.current) return;
-    fetchPage(page + 1);
-  }, [fetchPage, hasMore, page]);
+    // compute next page based on pagesRef keys
+    const keys = Object.keys(pagesRef.current || {})
+      .map(n => Number(n))
+      .filter(n => !isNaN(n));
+    const nextPage = keys.length ? Math.max(...keys) + 1 : initialPage + 1;
+    if (fetchingPagesRef.current.has(nextPage)) return;
+    if (!hasMore) return;
+    fetchPage(nextPage, false);
+  }, [fetchPage, hasMore, initialPage]);
 
   return {
     items,
@@ -82,7 +248,8 @@ function useBookings(initialPage = 1) {
     refresh,
     loadMore,
     hasMore,
-    setItems,
+    setItems: setItemsState,
+    pagesRef, // exported for debugging if needed
   };
 }
 
@@ -124,10 +291,12 @@ const StatusBadge = ({status}) => {
 };
 
 const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
-  // Use cache: 'force-cache' for standard RN Image, or replace with FastImage for better control
   const logoUrl = item?.salon?.images?.logo;
-  const hasLogo = !!logoUrl;
-  const logoUri = hasLogo ? {uri: logoUrl, cache: 'force-cache'} : null;
+  const hasLogo =
+    !!logoUrl &&
+    logoUrl !==
+      'https://dashboard.ontimeqa.com/backend/assets/images/1300x300.png';
+  const logoUri = hasLogo ? {uri: logoUrl, cache: 'force-cache'} : appLogo;
 
   return (
     <TouchableOpacity
@@ -135,13 +304,7 @@ const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
       onPress={() => onPress(item.id)}
       activeOpacity={0.85}>
       <View style={styles.cardLeft}>
-        {hasLogo ? (
-          <Image source={logoUri} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatar, styles.iconWrap]}>
-            <Ionicons name="cut" size={28} color={Colors.primary} />
-          </View>
-        )}
+        <Image source={logoUri} style={styles.avatar} />
       </View>
 
       <View style={styles.cardMiddle}>
@@ -166,7 +329,6 @@ const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
   );
 });
 
-// utilities
 function formatTimeTo12Hour(time24) {
   if (!time24) return '';
   const [hrs, mins] = time24.split(':');
@@ -193,11 +355,20 @@ function formatDateShort(dateString) {
 const Booking = () => {
   const navigation = useNavigation();
   const {isAuth} = useContext(AuthContext);
-  const {t} = useTranslation();
-
   const [tabSelected, setTabSelected] = useState(1);
-  const {items, loading, refreshing, fetchPage, refresh, loadMore, hasMore} =
-    useBookings(1);
+  const {
+    items,
+    loading,
+    refreshing,
+    fetchPage,
+    refresh,
+    loadMore,
+    hasMore,
+    pagesRef,
+  } = useBookings(1);
+
+  const flatListRef = useRef(null);
+  const onEndReachedCalledDuringMomentum = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -207,14 +378,17 @@ const Booking = () => {
         );
         return;
       }
+      // initial load: fetch page1 (and allow subsequent loadMore to fetch more)
       fetchPage(1, true);
     }, [isAuth, navigation, fetchPage]),
   );
 
   const filterTab = useMemo(
-    () => TABS.find(t => t.id === tabSelected),
+    () => TABS.find(tp => tp.id === tabSelected),
     [tabSelected],
   );
+
+  // filter preserves page order because `items` is already deterministic
   const filteredBookings = useMemo(
     () =>
       Array.isArray(items)
@@ -227,9 +401,33 @@ const Booking = () => {
     id => navigation.navigate('BookingDetails', {id}),
     [navigation],
   );
+
   const handleEndReached = useCallback(() => {
-    if (!loading && hasMore) loadMore();
+    if (!loading && hasMore) {
+      loadMore();
+    }
   }, [loading, hasMore, loadMore]);
+
+  const handleTabSelect = useCallback(
+    id => {
+      setTabSelected(id);
+      try {
+        flatListRef.current?.scrollToOffset({offset: 0, animated: true});
+      } catch (e) {}
+      // fetch page1 for this tab (smart: pagesRef preserves older pages unless you want to clear them)
+      fetchPage(1, true);
+    },
+    [fetchPage],
+  );
+
+  // debug helper (optional)
+  if (DEBUG) {
+    // eslint-disable-next-line no-console
+    console.log(
+      '[BOOKING SCREEN] pages present:',
+      Object.keys(pagesRef.current || {}),
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -238,7 +436,7 @@ const Booking = () => {
       </View>
 
       <View style={styles.content}>
-        <TabBar selectedId={tabSelected} onSelect={setTabSelected} />
+        <TabBar selectedId={tabSelected} onSelect={handleTabSelect} />
 
         {loading && items.length === 0 ? (
           <View style={styles.center}>
@@ -246,6 +444,7 @@ const Booking = () => {
           </View>
         ) : (
           <FlatList
+            ref={flatListRef}
             data={filteredBookings}
             keyExtractor={item => String(item.id)}
             renderItem={({item}) => (
@@ -257,8 +456,15 @@ const Booking = () => {
               />
             )}
             contentContainerStyle={styles.listContent}
-            onEndReached={handleEndReached}
+            onEndReached={() => {
+              if (!onEndReachedCalledDuringMomentum.current) return;
+              handleEndReached();
+              onEndReachedCalledDuringMomentum.current = false;
+            }}
             onEndReachedThreshold={0.4}
+            onMomentumScrollBegin={() => {
+              onEndReachedCalledDuringMomentum.current = true;
+            }}
             ListFooterComponent={() =>
               loading && hasMore ? (
                 <ActivityIndicator style={{margin: 12}} />
@@ -268,6 +474,9 @@ const Booking = () => {
               <RefreshControl refreshing={refreshing} onRefresh={refresh} />
             }
             showsVerticalScrollIndicator={false}
+            initialNumToRender={8}
+            windowSize={10}
+            removeClippedSubviews={false}
           />
         )}
       </View>
@@ -314,7 +523,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   tabActiveText: {fontSize: 13, color: '#fff'},
-  listContent: {paddingBottom: 140},
+  listContent: {paddingTop: 10},
   card: {
     flexDirection: 'row',
     alignItems: 'center',

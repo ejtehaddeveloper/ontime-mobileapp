@@ -366,38 +366,113 @@ const Service = ({route}) => {
     [navigation, isAuth, salonId],
   );
 
-  // open subservices modal (cached first) — improved: writes cache and uses prewarm map
+  // robust open subservices: update cache & services state, bump listKey, open modal after interactions
   const handleOpenSubServices = useCallback(
     async serviceUuid => {
       if (!serviceUuid) return;
       setSubServiceLoading(true);
+
+      const computeStats = subs => {
+        const prices = (subs || [])
+          .map(x => {
+            const p = parseFloat(x.price);
+            return Number.isFinite(p) ? p : null;
+          })
+          .filter(Boolean);
+        const durations = (subs || [])
+          .map(x => {
+            const d = parseInt(x.duration, 10);
+            return Number.isFinite(d) ? d : null;
+          })
+          .filter(Boolean);
+
+        return {
+          min_price: prices.length ? Math.min(...prices) : null,
+          max_price: prices.length ? Math.max(...prices) : null,
+          min_duration: durations.length ? Math.min(...durations) : null,
+          max_duration: durations.length ? Math.max(...durations) : null,
+        };
+      };
+
       try {
         const cached = inMemoryCache.get(cacheKey) || {};
         const cachedList =
           cached.subServicesForService &&
           cached.subServicesForService[serviceUuid];
-        if (Array.isArray(cachedList)) {
-          setSubServices(Array.isArray(cachedList) ? [...cachedList] : []);
-          setShowSubModal(true);
+
+        const applyStatsToCacheAndState = (subsArray = []) => {
+          const stats = computeStats(subsArray);
+
+          // update subServicesForService map and servicesForCategory entries
+          const after = inMemoryCache.get(cacheKey) || {};
+          const newSubMap = {...(after.subServicesForService || {})};
+          if (Array.isArray(subsArray)) newSubMap[serviceUuid] = subsArray;
+
+          const updatedServicesForCategory = {
+            ...(after.servicesForCategory || {}),
+          };
+          Object.keys(updatedServicesForCategory).forEach(catKey => {
+            const arr = Array.isArray(updatedServicesForCategory[catKey])
+              ? updatedServicesForCategory[catKey]
+              : [];
+            updatedServicesForCategory[catKey] = arr.map(s =>
+              s && s.uuid === serviceUuid ? {...s, ...stats} : s,
+            );
+          });
+
+          inMemoryCache.set(cacheKey, {
+            ...after,
+            subServicesForService: newSubMap,
+            servicesForCategory: updatedServicesForCategory,
+            lastFetchedAt: Date.now(),
+          });
+
+          // update local services list (new array reference)
+          setServices(prev =>
+            Array.isArray(prev)
+              ? prev.map(s =>
+                  s && s.uuid === serviceUuid ? {...s, ...stats} : s,
+                )
+              : prev,
+          );
+
+          // force a small remount/repaint so virtualization picks up the change reliably
+          setListKey(k => k + 1);
+
+          // nudge layout
           nudgeFlatListLayout();
+        };
+
+        if (Array.isArray(cachedList)) {
+          // cached path: apply stats first, then open modal after UI had chance to paint
+          setSubServices(Array.isArray(cachedList) ? [...cachedList] : []);
+          applyStatsToCacheAndState(cachedList);
+
+          InteractionManager.runAfterInteractions(() => {
+            setShowSubModal(true);
+          });
           return;
         }
+
+        // not cached — fetch then apply stats and open modal after paint
         const subs = (await getSubServices(serviceUuid)) ?? [];
+        console.log('Fetched subservices', subs);
         setSubServices(Array.isArray(subs) ? [...subs] : []);
-        setShowSubModal(true);
-        inMemoryCache.set(cacheKey, {
-          ...cached,
-          subServicesForService: {
-            ...(cached.subServicesForService || {}),
-            [serviceUuid]: subs,
-          },
-          lastFetchedAt: Date.now(),
+        applyStatsToCacheAndState(subs);
+
+        InteractionManager.runAfterInteractions(() => {
+          setShowSubModal(true);
         });
-        nudgeFlatListLayout();
       } catch (err) {
         console.log('Error fetching subservices', err);
+        // still attempt to show modal (empty)
         setSubServices([]);
-        setShowSubModal(true);
+        // bump listKey defensively
+        setListKey(k => k + 1);
+        nudgeFlatListLayout();
+        InteractionManager.runAfterInteractions(() => {
+          setShowSubModal(true);
+        });
       } finally {
         setSubServiceLoading(false);
       }
@@ -432,15 +507,16 @@ const Service = ({route}) => {
   // stable item renderer (no async inside)
   const renderServiceItem = useCallback(
     ({item}) => {
+      console.log('Rendering service item', item);
       const isSub = !!item?.has_sub_services;
       const durationText = isSub
-        ? item?.min_duration != null && item?.max_duration != null
-          ? `${item.min_duration} - ${item.max_duration} ${t('Mins')}`
+        ? item?.duration_avg.min != null && item?.duration_avg.max != null
+          ? `${item.duration_avg.min} - ${item.duration_avg.max} ${t('Mins')}`
           : `${t('Mins')}`
         : `${item?.duration ?? ''} ${t('Mins')}`;
       const priceText = isSub
-        ? item?.min_price != null && item?.max_price != null
-          ? `${item.min_price} - ${item.max_price} QAR`
+        ? item?.price_avg.min != null && item?.price_avg.max != null
+          ? `${item.price_avg.min} - ${item.price_avg.max} QAR`
           : ''
         : item?.price != null
         ? `${item.price} QAR`
@@ -456,9 +532,7 @@ const Service = ({route}) => {
               : openDateBook(item.uuid, false)
           }>
           <View style={styles.serviceInfoContainer}>
-            <Text
-              style={[styles.text, {textAlign: isRTL ? 'right' : 'left'}]}
-              numberOfLines={2}>
+            <Text style={[styles.text]} numberOfLines={2}>
               {isRTL ? item?.name_ar : item?.name}
             </Text>
             <Text style={styles.title2}>{durationText}</Text>
@@ -511,7 +585,9 @@ const Service = ({route}) => {
   // List header (salon info + categories)
   const ListHeader = useCallback(() => {
     const logoSource =
-      salonDetails && salonDetails.images && salonDetails.images.logo
+      salonDetails.images.logo &&
+      salonDetails.images.logo !==
+        'https://dashboard.ontimeqa.com/backend/assets/images/default-salon-logo.png'
         ? {uri: `${hostImge}${salonDetails.images.logo}`}
         : appLogo;
 
@@ -588,7 +664,7 @@ const Service = ({route}) => {
               {item?.duration} {t('Mins')}
             </Text>
           </View>
-          <View style={{alignItems: 'flex-end'}}>
+          <View style={{alignItems: 'center', flexDirection: 'row'}}>
             <Text style={styles.priceText}>
               {item?.price} <Text style={{fontSize: 12}}>QAR</Text>
             </Text>
@@ -628,7 +704,7 @@ const Service = ({route}) => {
           ref={flatRef}
           key={String(listKey)}
           data={Array.isArray(services) ? services : []}
-          extraData={selectedCategory ?? services?.length}
+          extraData={[selectedCategory, services, listKey]}
           renderItem={renderServiceItem}
           keyExtractor={keyExtractor}
           ListHeaderComponent={ListHeader}
