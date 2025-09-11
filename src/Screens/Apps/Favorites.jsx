@@ -1,3 +1,4 @@
+/* eslint-disable curly */
 /* eslint-disable react-native/no-inline-styles */
 import React, {
   useCallback,
@@ -32,17 +33,25 @@ import i18n from '../../assets/locales/i18';
 import {screenHeight} from '../../assets/constants/ScreenSize';
 import hostImge from '../../context/hostImge';
 
-/**
- * Favorites screen with AsyncStorage persistence.
- * Cache key versioned so you can change it if shape changes in future.
- */
+const appLogo = require('../../assets/images/logo22.jpg');
 const CACHE_KEY = 'favorites_cache_v1';
 
-// memoized row to avoid re-rendering unchanged rows
+const DEFAULT_LOGOS = [
+  'https://dashboard.ontimeqa.com/backend/assets/images/1300x300.png',
+  'https://dashboard.ontimeqa.com/backend/assets/images/default-salon-logo.png',
+];
+
 const FavoriteRow = memo(({item, onPressCard, onPressHeart}) => {
   const slug = item.slug;
   const number = slug?.match(/\d+$/);
   const extractedNumber = number ? number[0] : null;
+
+  // robust logo handling: allow either full URL or relative path (prefixed by hostImge)
+  const logoRaw = item?.images?.logo || '';
+  const fullLogo = logoRaw.startsWith('http')
+    ? logoRaw
+    : `${hostImge}${logoRaw}`;
+  const hasLogo = !!logoRaw && !DEFAULT_LOGOS.includes(fullLogo);
 
   return (
     <TouchableOpacity
@@ -50,21 +59,16 @@ const FavoriteRow = memo(({item, onPressCard, onPressHeart}) => {
       activeOpacity={0.85}
       onPress={() => onPressCard(extractedNumber)}>
       <View style={styles.cardContent}>
-        {item?.images?.logo ? (
-          <Image
-            source={{uri: `${hostImge}${item?.images?.logo}`}}
-            style={styles.avatar}
-          />
+        {hasLogo ? (
+          <Image source={{uri: fullLogo}} style={styles.avatar} />
         ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Ionicons name="cut" size={26} color={Colors.primary} />
-          </View>
+          // fallback to app logo when no valid salon logo
+          <Image source={appLogo} style={styles.avatar} />
         )}
         <View style={{flex: 1, justifyContent: 'center'}}>
           <Text style={styles.name} numberOfLines={1}>
             {i18n.language === 'ar' ? item?.name_ar : item?.name}
           </Text>
-          <Text style={styles.subText}>{t('Beauty & Wellness')}</Text>
         </View>
       </View>
       <TouchableOpacity
@@ -165,22 +169,17 @@ const Favorites = () => {
         return;
       }
 
-      // If we have cached data, load it immediately (fast) then fetch in background.
-      // If no cached data, force an initial fetch (show loader).
       (async () => {
         if (dataRef.current.length === 0) {
           // attempt to load from storage first
           await loadCache();
           if (dataRef.current.length === 0) {
-            // still empty -> do full fetch and show loading indicator
             setLoading(true);
             await fetchData({forceReplace: true});
           } else {
-            // we had cached items -> background check for changes (no loading spinner)
             fetchData({forceReplace: false});
           }
         } else {
-          // we already have data in memory -> lightweight check for changes
           fetchData({forceReplace: false});
         }
       })();
