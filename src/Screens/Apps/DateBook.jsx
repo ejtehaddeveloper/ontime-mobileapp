@@ -155,7 +155,9 @@ const DateBook = ({route}) => {
     } catch (err) {
       console.log('fetchEmployees error', err);
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [salonId, serviceID, isSubService]);
 
@@ -195,18 +197,24 @@ const DateBook = ({route}) => {
     if (m === 12) {
       setCurrentMonth('01');
       setCurrentYear(y => y + 1);
-    } else setCurrentMonth(String(m + 1).padStart(2, '0'));
+    } else {
+      setCurrentMonth(String(m + 1).padStart(2, '0'));
+    }
   }, [currentMonth]);
   const prevMonth = useCallback(() => {
     let m = parseInt(currentMonth, 10),
       y = currentYear;
-    if (y === currentRealYear && m === currentRealMonth) return;
+    if (y === currentRealYear && m === currentRealMonth) {
+      return;
+    }
     if (m === 1) {
       if (y > currentRealYear) {
         setCurrentMonth('12');
         setCurrentYear(y - 1);
       }
-    } else setCurrentMonth(String(m - 1).padStart(2, '0'));
+    } else {
+      setCurrentMonth(String(m - 1).padStart(2, '0'));
+    }
   }, [currentMonth, currentYear, currentRealMonth, currentRealYear]);
 
   // date string YYYY-MM-DD
@@ -233,7 +241,9 @@ const DateBook = ({route}) => {
 
   // fetch times (uses cache if available) — store ONLY available slots
   useEffect(() => {
-    if (!selectedDay) return;
+    if (!selectedDay) {
+      return;
+    }
     const key = `${empSelectedId ?? 'any'}|${date}`;
 
     const cached = timeCacheRef.current.get(key);
@@ -259,15 +269,21 @@ const DateBook = ({route}) => {
           isSubService,
         );
         const list = Array.isArray(res) ? res : [];
-        if (cancelled || fetchIdRef.current !== myFetchId) return;
+        if (cancelled || fetchIdRef.current !== myFetchId) {
+          return;
+        }
 
         // keep only available slots
         const avail = list.filter(s => s && s.available === true);
         timeCacheRef.current.set(key, avail);
-        if (mountedRef.current) setTimeSlots(avail);
+        if (mountedRef.current) {
+          setTimeSlots(avail);
+        }
       } catch (err) {
         console.log('getTime error', err);
-        if (cancelled || fetchIdRef.current !== myFetchId) return;
+        if (cancelled || fetchIdRef.current !== myFetchId) {
+          return;
+        }
         if (mountedRef.current) {
           setTimeSlots([]);
           setErrorT(err?.toString?.() ?? t('Error fetching times'));
@@ -277,8 +293,9 @@ const DateBook = ({route}) => {
           !cancelled &&
           fetchIdRef.current === myFetchId &&
           mountedRef.current
-        )
+        ) {
           setLoadTime(false);
+        }
       }
     };
 
@@ -299,7 +316,9 @@ const DateBook = ({route}) => {
     for (let i = 0; i < arr.length; i += perPage) {
       const chunk = arr.slice(i, i + perPage);
       // pad
-      while (chunk.length < perPage) chunk.push(null);
+      while (chunk.length < perPage) {
+        chunk.push(null);
+      }
       p.push(chunk);
     }
     // ensure at least one page so grid always renders
@@ -316,7 +335,9 @@ const DateBook = ({route}) => {
       await deleteCart(id);
       setCart(prev => {
         const updated = prev.filter(x => x.cart_item_id !== id);
-        if (updated.length === 0) setIsVisibleCart(false);
+        if (updated.length === 0) {
+          setIsVisibleCart(false);
+        }
         return updated;
       });
     } catch (err) {
@@ -425,6 +446,19 @@ const DateBook = ({route}) => {
     [selectedDate, pillWidth, pillHeight],
   );
 
+  // fetch cart helper (already present as fetchCart)
+  const fetchCart = useCallback(async () => {
+    try {
+      const res = await getCart();
+      if (res) {
+        setCart(res.data || []);
+        setTPrice(res);
+      }
+    } catch (err) {
+      console.log('getCart error', err);
+    }
+  }, []);
+
   // booking / cart flows
   const handleGoToCheckout = useCallback(async () => {
     if (!selectedDate) {
@@ -444,9 +478,8 @@ const DateBook = ({route}) => {
         isSubService,
       );
       if (res) {
-        setIsVisibleMsg(true);
-        Pop_up(9);
-        setNum(9);
+        await fetchCart();
+        setIsVisibleCart(true);
       }
     } catch (err) {
       const msg = String(err || '');
@@ -481,6 +514,66 @@ const DateBook = ({route}) => {
     date,
     selectedEndDate,
     isSubService,
+    fetchCart,
+  ]);
+
+  // NEW: Add More — add to cart then go back
+  const handleAddMore = useCallback(async () => {
+    if (!selectedDate) {
+      Pop_up(1);
+      setIsVisibleMsg(true);
+      return;
+    }
+    setSubLoading(true);
+    try {
+      const res = await Cart(
+        salonId,
+        serviceID,
+        empSelectedId,
+        date,
+        selectedDate,
+        selectedEndDate,
+        isSubService,
+      );
+      if (res) {
+        // successfully added to cart — go back to previous screen
+        // (keep same popup behaviour if you want: show a success message on previous screen)
+        navigation.goBack();
+      }
+    } catch (err) {
+      const msg = String(err || '');
+      if (
+        msg ===
+        'You have items from a different salon in your cart. Would you like to clear your cart and add this item?'
+      ) {
+        Pop_up(4);
+        setNum(4);
+        setIsVisibleMsg(true);
+      } else if (
+        msg.includes(
+          'You already have an appointment in your cart during this time slot.',
+        )
+      ) {
+        Pop_up(8);
+        setNum(8);
+        setIsVisibleMsg(true);
+      } else {
+        Pop_up(8);
+        setNum(8);
+        setIsVisibleMsg(true);
+      }
+    } finally {
+      setSubLoading(false);
+    }
+  }, [
+    selectedDate,
+    salonId,
+    serviceID,
+    empSelectedId,
+    date,
+    selectedEndDate,
+    isSubService,
+    navigation,
   ]);
 
   const Confirm = useCallback(async () => {
@@ -520,17 +613,7 @@ const DateBook = ({route}) => {
       console.log('ClearCart error', err);
     }
   }, []);
-  const fetchCart = useCallback(async () => {
-    try {
-      const res = await getCart();
-      if (res) {
-        setCart(res.data || []);
-        setTPrice(res);
-      }
-    } catch (err) {
-      console.log('getCart error', err);
-    }
-  }, []);
+  const fetchCartForButton = fetchCart; // small alias if needed elsewhere
 
   const Pop_up = useCallback(numP => {
     switch (numP) {
@@ -604,7 +687,7 @@ const DateBook = ({route}) => {
           </TouchableOpacity>
         </View>
 
-        <View style={{direction: 'ltr'}}>
+        <View>
           <View style={styles.monthSelector}>
             {i18n.language === 'en' ? (
               <TouchableOpacity
@@ -666,7 +749,9 @@ const DateBook = ({route}) => {
                     {backgroundColor: isSelected ? Colors.primary : '#fff'},
                   ]}
                   onPress={() => {
-                    if (selectedDay === item.day) return;
+                    if (selectedDay === item.day) {
+                      return;
+                    }
                     setSelectedDay(item.day);
                   }}>
                   <Text
@@ -737,7 +822,6 @@ const DateBook = ({route}) => {
         <Loading />
       ) : (
         <FlatList
-          // using a tiny non-empty data so ListHeaderComponent renders reliably on all devices
           data={[{key: 'header'}]}
           ListHeaderComponent={
             <>
@@ -803,8 +887,10 @@ const DateBook = ({route}) => {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.secondaryBtn]}
-                    onPress={() => navigation.goBack()}>
-                    <Text style={[styles.primaryBtnText, {color: '#000'}]}>
+                    onPress={handleAddMore}
+                    disabled={subLoading}>
+                    <Text
+                      style={[styles.primaryBtnText, {color: Colors.primary}]}>
                       {t('Add More')}
                     </Text>
                   </TouchableOpacity>
@@ -979,7 +1065,7 @@ const DateBook = ({route}) => {
         </Pressable>
       </Modal>
 
-      {/* checkout modal */}
+      {/* checkout modal — GITHUB styling (keeps all logic intact) */}
       <Modal
         visible={isVisibleCart}
         transparent
@@ -1035,17 +1121,14 @@ const DateBook = ({route}) => {
                         </View>
                         <TouchableOpacity
                           style={[
-                            styles.item3,
                             {
-                              paddingLeft: 15,
-                              paddingRight: 15,
-                              backgroundColor: '#000',
+                              alignSelf: 'flex-end',
+                              justifyContent: 'flex-end',
+                              marginLeft: 10,
                             },
                           ]}
                           onPress={() => delete_item(item?.cart_item_id)}>
-                          <Text style={[styles.title2, {color: '#fff'}]}>
-                            {t('Remove')}
-                          </Text>
+                          <Ionicons name="trash" size={20} color="#e74c3c" />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -1084,7 +1167,6 @@ const DateBook = ({route}) => {
 };
 
 const styles = StyleSheet.create({
-  // container & header
   container: {
     flex: 1,
     paddingHorizontal: 20,
@@ -1096,10 +1178,8 @@ const styles = StyleSheet.create({
     padding: 15,
     direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
-  // header rows
   headerRow: {paddingVertical: 8},
   headerText: {fontSize: 16, fontWeight: '600', alignSelf: 'flex-start'},
-  // employee select
   empSelectRow: {marginTop: 8, marginBottom: 8, alignItems: 'center'},
   empSelectBtn: {
     width: '90%',
@@ -1183,7 +1263,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#000',
+    borderColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1242,17 +1322,21 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modal2: {
+    width: '100%',
+    borderTopLeftRadius: 50,
+    borderTopRightRadius: 50,
     backgroundColor: '#fff',
-    padding: 18,
-    borderRadius: 12,
-    alignItems: 'center',
+    padding: 15,
+    maxHeight: height * 0.8,
+    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
   modalHeaderContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    width: '100%',
+    padding: 10,
     marginBottom: 12,
+    width: screenWidth * 0.9,
   },
   modalTitle: {fontSize: 16, fontWeight: '600'},
   serv: {
@@ -1261,7 +1345,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     width: '100%',
   },
-  serviceList: {width: '100%', marginBottom: 8},
+  serviceList: {width: screenWidth * 0.94, marginBottom: 8},
   text: {fontSize: 14, fontWeight: '600'},
   title2: {fontSize: 12, fontWeight: '700', color: Colors.black2},
   priceText: {fontWeight: '800'},
@@ -1274,9 +1358,9 @@ const styles = StyleSheet.create({
   checkoutButtonsContainer: {alignItems: 'center'},
   confirmButton: {
     width: '90%',
-    height: 56,
+    height: 60,
     backgroundColor: Colors.primary,
-    borderRadius: 12,
+    borderRadius: 50,
     alignItems: 'center',
     justifyContent: 'center',
   },
