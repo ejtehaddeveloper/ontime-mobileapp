@@ -18,6 +18,7 @@ import {
   Pressable,
   Image,
   SafeAreaView,
+  Platform,
 } from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import {
@@ -53,10 +54,23 @@ const NotificationRow = memo(({item, onPress}) => {
         style={styles.image}
       />
       <View style={{flex: 1, justifyContent: 'center'}}>
-        <Text style={[styles.text, {fontWeight: '300', fontSize: 13}]}>
+        <Text
+          style={[
+            styles.text,
+            {fontWeight: '300', fontSize: 13},
+            i18n.language === 'ar' &&
+              Platform.OS === 'ios' && {textAlign: 'right'},
+          ]}>
           {i18n.language === 'en' ? item?.title : item?.title_ar}
         </Text>
-        <Text style={styles.details} numberOfLines={3} ellipsizeMode="tail">
+        <Text
+          style={[
+            styles.details,
+            i18n.language === 'ar' &&
+              Platform.OS === 'ios' && {textAlign: 'right'},
+          ]}
+          numberOfLines={3}
+          ellipsizeMode="tail">
           {i18n.language === 'en' ? item?.body : item?.body_ar}
         </Text>
       </View>
@@ -325,6 +339,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#000',
+
     // backgroundColor: '#000',
     // width: 185,
   },
@@ -380,6 +395,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,
+    marginTop: 20,
   },
   buttonText: {
     color: '#fff',

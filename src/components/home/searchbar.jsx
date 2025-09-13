@@ -1,9 +1,16 @@
+/* eslint-disable react-native/no-inline-styles */
 import React from 'react';
-import {View, TextInput, TouchableOpacity, StyleSheet} from 'react-native';
+import {
+  View,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+} from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {Colors} from '../../assets/constants';
 import {t} from 'i18next';
-
+import i18n from '../../assets/locales/i18';
 const SearchBar = ({value, onChange, onOpenFilter, maxWidth}) => (
   <View style={styles.searchFilterContainer}>
     <View style={[styles.searchBar, {width: maxWidth}]}>
@@ -12,7 +19,11 @@ const SearchBar = ({value, onChange, onOpenFilter, maxWidth}) => (
         placeholder={t('Search here')}
         value={value}
         onChangeText={onChange}
-        style={styles.searchText}
+        style={[
+          styles.searchText,
+          i18n.language === 'ar' &&
+            Platform.OS === 'ios' && {textAlign: 'right'},
+        ]}
         placeholderTextColor={Colors.primary}
       />
     </View>
@@ -40,7 +51,12 @@ const styles = StyleSheet.create({
     marginVertical: 10,
     backgroundColor: '#fff',
   },
-  searchText: {fontSize: 14, color: Colors.black3, marginLeft: 5, flex: 1},
+  searchText: {
+    fontSize: 14,
+    color: Colors.black3,
+    marginLeft: 5,
+    flex: 1,
+  },
   filter: {
     width: 44,
     height: 44,

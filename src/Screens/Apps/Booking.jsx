@@ -510,7 +510,13 @@ const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
       </View>
 
       <View style={styles.cardMiddle}>
-        <Text style={styles.cardTitle} numberOfLines={1}>
+        <Text
+          style={[
+            styles.cardTitle,
+            i18n.language === 'ar' &&
+              Platform.OS === 'ios' && {textAlign: 'right'},
+          ]}
+          numberOfLines={1}>
           {i18n.language === 'ar' ? item?.salon?.name_ar : item?.salon?.name}
         </Text>
         <View style={styles.rowSmall}>

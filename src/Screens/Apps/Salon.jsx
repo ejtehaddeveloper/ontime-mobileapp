@@ -492,10 +492,20 @@ const SalonScreen = ({route}) => {
                       paddingLeft: 15,
                     },
                   ]}>
-                  <Text style={styles.title}>
+                  <Text
+                    style={[
+                      styles.title,
+                      i18n.language === 'ar' &&
+                        Platform.OS === 'ios' && {textAlign: 'right'},
+                    ]}>
                     {isRTL ? salon?.name_ar : salon?.name}
                   </Text>
-                  <Text style={styles.description}>
+                  <Text
+                    style={[
+                      styles.description,
+                      i18n.language === 'ar' &&
+                        Platform.OS === 'ios' && {textAlign: 'right'},
+                    ]}>
                     {isRTL ? salon?.description_ar : salon?.description}
                   </Text>
                   <View
@@ -517,6 +527,8 @@ const SalonScreen = ({route}) => {
                       style={[
                         styles.locationText,
                         isRTL && {marginLeft: 0, marginRight: 5},
+                        i18n.language === 'ar' &&
+                          Platform.OS === 'ios' && {textAlign: 'right'},
                       ]}
                       numberOfLines={2}>
                       {salon?.location?.address}
@@ -729,7 +741,11 @@ const styles = StyleSheet.create({
   salonLogo: {width: 75, height: 85, borderRadius: 10},
   logoPlaceholder: {backgroundColor: Colors.border},
   salonDetails: {flex: 1},
-  title: {fontSize: 18, fontWeight: '700', marginBottom: 5},
+  title: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 5,
+  },
   description: {
     fontSize: 12,
     fontWeight: '700',

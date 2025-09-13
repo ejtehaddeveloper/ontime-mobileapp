@@ -1,5 +1,6 @@
+/* eslint-disable react-native/no-inline-styles */
 import React from 'react';
-import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
+import {View, Text, TouchableOpacity, StyleSheet, Platform} from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {Colors} from '../../assets/constants';
 import {t} from 'i18next';
@@ -9,7 +10,15 @@ const Header = ({userInfo, isAuth, cartLength, onCartPress}) => {
   return (
     <View style={styles.headerContainer}>
       <View>
-        <Text style={[styles.title, {fontSize: 24}]}>{t('Welcome')}</Text>
+        <Text
+          style={[
+            styles.title,
+            {fontSize: 24},
+            i18n.language === 'ar' &&
+              Platform.OS === 'ios' && {textAlign: 'right'},
+          ]}>
+          {t('Welcome')}
+        </Text>
         {isAuth && <Text style={styles.name1}>{userInfo?.name} !</Text>}
       </View>
 
@@ -31,7 +40,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  title: {fontSize: 18, marginTop: 5, fontWeight: '600'},
+  title: {
+    fontSize: 18,
+    marginTop: 5,
+    fontWeight: '600',
+  },
   name1: {
     fontSize: 14,
     color: Colors.black1,

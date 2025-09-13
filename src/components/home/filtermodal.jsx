@@ -1,3 +1,4 @@
+/* eslint-disable react-native/no-inline-styles */
 // src/components/FilterModal.js
 import React, {useMemo} from 'react';
 import {
@@ -149,7 +150,13 @@ const FilterModal = ({
                 <Text style={styles.sectionTitle}>{t('Address')}</Text>
                 <View style={styles.chipRow}>{addressesRender}</View>
 
-                <Text style={[styles.sectionTitle, {marginTop: 8}]}>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    {marginTop: 8},
+                    i18n.language === 'ar' &&
+                      Platform.OS === 'ios' && {textAlign: 'right'},
+                  ]}>
                   {t('Sort By')}
                 </Text>
                 {sortingOptions.map(option => (
@@ -249,7 +256,11 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
   clearFilterText: {fontSize: 10, color: Colors.primary},
-  sectionTitle: {fontSize: 18, marginTop: 8, fontWeight: '600'},
+  sectionTitle: {
+    fontSize: 18,
+    marginTop: 8,
+    fontWeight: '600',
+  },
 
   chipRow: {flexDirection: 'row', flexWrap: 'wrap', marginTop: 8},
   chip: {

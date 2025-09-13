@@ -1343,7 +1343,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '100%',
+    width: screenWidth * 0.9,
+    paddingHorizontal: 10,
   },
   serviceList: {width: screenWidth * 0.94, marginBottom: 8},
   text: {fontSize: 14, fontWeight: '600'},
@@ -1352,6 +1353,7 @@ const styles = StyleSheet.create({
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginVertical: 10,
     width: '100%',
     padding: 10,
   },

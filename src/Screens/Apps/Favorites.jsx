@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useRef,
   useState,
+  useMemo,
   memo,
 } from 'react';
 import {
@@ -16,6 +17,7 @@ import {
   Image,
   TouchableOpacity,
   SafeAreaView,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Colors} from '../../assets/constants';
@@ -42,6 +44,8 @@ const DEFAULT_LOGOS = [
 ];
 
 const FavoriteRow = memo(({item, onPressCard, onPressHeart}) => {
+  const isRTL = useMemo(() => i18n.language === 'ar', []);
+
   const slug = item.slug;
   const number = slug?.match(/\d+$/);
   const extractedNumber = number ? number[0] : null;
@@ -66,7 +70,12 @@ const FavoriteRow = memo(({item, onPressCard, onPressHeart}) => {
           <Image source={appLogo} style={styles.avatar} />
         )}
         <View style={{flex: 1, justifyContent: 'center'}}>
-          <Text style={styles.name} numberOfLines={1}>
+          <Text
+            style={[
+              styles.name,
+              Platform.OS === 'ios' && isRTL && {textAlign: 'right'},
+            ]}
+            numberOfLines={1}>
             {i18n.language === 'ar' ? item?.name_ar : item?.name}
           </Text>
         </View>

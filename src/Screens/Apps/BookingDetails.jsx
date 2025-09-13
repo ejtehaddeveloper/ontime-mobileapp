@@ -1,3 +1,4 @@
+/* eslint-disable react-native/no-inline-styles */
 /*
   Refactored BookingDetails screen
   - Extracted reusable components (Header, InfoRow, ConfirmModal)
@@ -20,6 +21,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {Colors} from '../../assets/constants';
@@ -31,17 +33,23 @@ import i18n from '../../assets/locales/i18';
 
 // ---------- helpers (stable references, no recreations)
 function formatTimeTo12Hour(time24) {
-  if (!time24) return '';
+  if (!time24) {
+    return '';
+  }
   const [hoursStr, minutes] = time24.split(':');
   let hourNum = parseInt(hoursStr, 10);
   const ampm = hourNum >= 12 ? 'PM' : 'AM';
   hourNum = hourNum % 12;
-  if (hourNum === 0) hourNum = 12;
+  if (hourNum === 0) {
+    hourNum = 12;
+  }
   return `${hourNum}:${minutes} ${ampm}`;
 }
 
 function formatDateShort(dateString) {
-  if (!dateString) return '';
+  if (!dateString) {
+    return '';
+  }
   const date = new Date(dateString);
   const options = {weekday: 'long', day: 'numeric', month: 'short'};
   try {
@@ -55,7 +63,9 @@ function formatDateShort(dateString) {
 }
 
 function safePriceDisplay(priceStr) {
-  if (!priceStr) return '-';
+  if (!priceStr) {
+    return '-';
+  }
   // If price is like "100.000" or "100000" or includes decimals, try to show the integer part
   const cleaned = String(priceStr).replace(/[^0-9.]/g, '');
   const parts = cleaned.split('.');
@@ -75,16 +85,22 @@ function useBooking(id) {
 
     getAppointByID(id)
       .then(data => {
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
         setBooking(data || null);
       })
       .catch(err => {
         console.log('getAppointByID error', err);
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
         setError(err);
       })
       .finally(() => {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       });
 
     return () => {
@@ -184,7 +200,9 @@ const BookingDetails = ({route}) => {
 
   const openMap = useCallback(() => {
     const address = salon?.salon?.location?.address;
-    if (!address) return;
+    if (!address) {
+      return;
+    }
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
       address,
     )}`;
@@ -209,7 +227,9 @@ const BookingDetails = ({route}) => {
   }, [id, navigation]);
 
   const handleChange = useCallback(() => {
-    if (!salon) return;
+    if (!salon) {
+      return;
+    }
     const appointmentID = id;
     const salonId = salon?.salon?.id;
     const serviceID = salon?.sub_service
@@ -238,9 +258,11 @@ const BookingDetails = ({route}) => {
     return safePriceDisplay(p);
   }, [salon]);
 
-  if (loading) return <Loading />;
+  if (loading) {
+    return <Loading />;
+  }
 
-  if (error)
+  if (error) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <Header
@@ -254,6 +276,7 @@ const BookingDetails = ({route}) => {
         </View>
       </SafeAreaView>
     );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -266,7 +289,14 @@ const BookingDetails = ({route}) => {
         />
 
         <View style={{marginTop: 20}}>
-          <Text style={styles.reviewTitle}>{t('Booking Details')}</Text>
+          <Text
+            style={[
+              styles.reviewTitle,
+              Platform.OS === 'ios' &&
+                i18n.language === 'ar' && {textAlign: 'right'},
+            ]}>
+            {t('Booking Details')}
+          </Text>
 
           <View style={styles.listContainer}>
             <View style={[styles.list, styles.rowSpaced]}>

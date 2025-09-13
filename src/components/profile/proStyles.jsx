@@ -41,7 +41,11 @@ const styles = StyleSheet.create({
   },
 
   section: {marginTop: 20, marginHorizontal: 16},
-  sectionTitle: {fontSize: 16, fontWeight: '800', marginBottom: 12},
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 12,
+  },
   rowCard: {
     paddingVertical: 14,
     paddingHorizontal: 12,
