@@ -310,8 +310,9 @@ const Profile = () => {
 
         {isAuth && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t('Notifications')}</Text>
-
+            <View style={{flexDirection: 'row-reverse'}}>
+              <Text style={styles.sectionTitle}>{t('Notifications')}</Text>
+            </View>
             <SettingRow
               icon="notifications-outline"
               label={t('Push Notifications')}
