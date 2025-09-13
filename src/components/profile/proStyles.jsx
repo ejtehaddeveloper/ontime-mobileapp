@@ -1,8 +1,14 @@
 import {StyleSheet, Platform} from 'react-native';
 import {Colors} from '../../assets/constants';
+import i18n from '../../assets/locales/i18';
+
 const styles = StyleSheet.create({
   safe: {flex: 1, backgroundColor: '#fff'},
-  container: {flex: 1, backgroundColor: '#fff'},
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
+  },
   header: {marginTop: 18, alignItems: 'center'},
   title: {fontSize: 22, fontWeight: '800', color: '#111'},
 

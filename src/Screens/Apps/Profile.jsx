@@ -269,11 +269,7 @@ const Profile = () => {
               <View style={styles.profileInner}>
                 <View>
                   <Text style={styles.nameText}>{userInfo?.name ?? '-'}</Text>
-                  <Text
-                    style={[
-                      styles.phoneText,
-                      Platform.OS === 'ios' && isRTL && {textAlign: 'right'},
-                    ]}>
+                  <Text style={styles.phoneText}>
                     {userInfo?.phone_number
                       ? userInfo.phone_number.slice(4)
                       : ''}
@@ -291,13 +287,7 @@ const Profile = () => {
         )}
 
         <View style={styles.section}>
-          <Text
-            style={[
-              styles.sectionTitle,
-              Platform.OS === 'ios' && isRTL && {textAlign: 'right'},
-            ]}>
-            {t('My Account')}
-          </Text>
+          <Text style={styles.sectionTitle}>{t('My Account')}</Text>
 
           <SettingRow
             icon="globe-outline"
@@ -318,13 +308,7 @@ const Profile = () => {
 
         {isAuth && (
           <View style={styles.section}>
-            <Text
-              style={[
-                styles.sectionTitle,
-                Platform.OS === 'ios' && isRTL && {textAlign: 'right'},
-              ]}>
-              {t('Notifications')}
-            </Text>
+            <Text style={styles.sectionTitle}>{t('Notifications')}</Text>
 
             <SettingRow
               icon="notifications-outline"
@@ -342,13 +326,7 @@ const Profile = () => {
         )}
 
         <View style={styles.section}>
-          <Text
-            style={[
-              styles.sectionTitle,
-              Platform.OS === 'ios' && isRTL && {textAlign: 'right'},
-            ]}>
-            {t('More')}
-          </Text>
+          <Text style={styles.sectionTitle}>{t('More')}</Text>
 
           <SettingRow
             icon="logo-whatsapp"
