@@ -341,6 +341,7 @@ const SalonScreen = ({route}) => {
   };
   const openAddressMap = async (lat, lng, label) => {
     console.log('salon data location: ', salon);
+    console.log('salon date for id:', salonId);
     try {
       if (Platform.OS === 'android') {
         // Android → system intent chooser (Google Maps, Waze, Bing, etc.)

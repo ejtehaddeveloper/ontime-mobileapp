@@ -254,7 +254,7 @@ const Profile = () => {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
-        style={[styles.container, {direction: isRTL ? 'rtl' : 'ltr'}]}
+        style={[styles.container]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag">
         <View style={styles.header}>
