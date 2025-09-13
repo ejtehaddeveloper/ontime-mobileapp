@@ -287,7 +287,9 @@ const Profile = () => {
         )}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('My Account')}</Text>
+          <View style={{flexDirection: 'row'}}>
+            <Text style={styles.sectionTitle}>{t('My Account')}</Text>
+          </View>
 
           <SettingRow
             icon="globe-outline"
