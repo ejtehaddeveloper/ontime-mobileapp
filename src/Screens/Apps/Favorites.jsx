@@ -70,14 +70,11 @@ const FavoriteRow = memo(({item, onPressCard, onPressHeart}) => {
           <Image source={appLogo} style={styles.avatar} />
         )}
         <View style={{flex: 1, justifyContent: 'center'}}>
-          <Text
-            style={[
-              styles.name,
-              Platform.OS === 'ios' && isRTL && {textAlign: 'right'},
-            ]}
-            numberOfLines={1}>
-            {i18n.language === 'ar' ? item?.name_ar : item?.name}
-          </Text>
+          <View style={{flexDirection: 'row'}}>
+            <Text style={[styles.name]} numberOfLines={1}>
+              {i18n.language === 'ar' ? item?.name_ar : item?.name}
+            </Text>
+          </View>
         </View>
       </View>
       <TouchableOpacity

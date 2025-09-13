@@ -4,21 +4,14 @@ import {View, Text, TouchableOpacity, StyleSheet, Platform} from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {Colors} from '../../assets/constants';
 import {t} from 'i18next';
-import i18n from '../../assets/locales/i18';
 
 const Header = ({userInfo, isAuth, cartLength, onCartPress}) => {
   return (
     <View style={styles.headerContainer}>
-      <View>
-        <Text
-          style={[
-            styles.title,
-            {fontSize: 24},
-            i18n.language === 'ar' &&
-              Platform.OS === 'ios' && {textAlign: 'right'},
-          ]}>
-          {t('Welcome')}
-        </Text>
+      <View style={{flexDirection: 'column'}}>
+        <View style={{flexDirection: 'row'}}>
+          <Text style={[styles.title, {fontSize: 24}]}>{t('Welcome')}</Text>
+        </View>
         {isAuth && <Text style={styles.name1}>{userInfo?.name} !</Text>}
       </View>
 

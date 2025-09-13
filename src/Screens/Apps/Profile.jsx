@@ -269,11 +269,13 @@ const Profile = () => {
               <View style={styles.profileInner}>
                 <View>
                   <Text style={styles.nameText}>{userInfo?.name ?? '-'}</Text>
-                  <Text style={styles.phoneText}>
-                    {userInfo?.phone_number
-                      ? userInfo.phone_number.slice(4)
-                      : ''}
-                  </Text>
+                  <View style={{flexDirection: 'row'}}>
+                    <Text style={styles.phoneText}>
+                      {userInfo?.phone_number
+                        ? userInfo.phone_number.slice(4)
+                        : ''}
+                    </Text>
+                  </View>
                 </View>
                 <TouchableOpacity
                   activeOpacity={0.8}
@@ -310,7 +312,7 @@ const Profile = () => {
 
         {isAuth && (
           <View style={styles.section}>
-            <View style={{flexDirection: 'row-reverse'}}>
+            <View style={{flexDirection: 'row'}}>
               <Text style={styles.sectionTitle}>{t('Notifications')}</Text>
             </View>
             <SettingRow
@@ -329,8 +331,9 @@ const Profile = () => {
         )}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('More')}</Text>
-
+          <View style={{flexDirection: 'row'}}>
+            <Text style={styles.sectionTitle}>{t('More')}</Text>
+          </View>
           <SettingRow
             icon="logo-whatsapp"
             label={t('Customer Service')}

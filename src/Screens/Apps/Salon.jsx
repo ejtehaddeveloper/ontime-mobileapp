@@ -493,30 +493,21 @@ const SalonScreen = ({route}) => {
                       paddingLeft: 15,
                     },
                   ]}>
-                  <Text
-                    style={[
-                      styles.title,
-                      i18n.language === 'ar' &&
-                        Platform.OS === 'ios' && {textAlign: 'right'},
-                    ]}>
-                    {isRTL ? salon?.name_ar : salon?.name}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.description,
-                      i18n.language === 'ar' &&
-                        Platform.OS === 'ios' && {textAlign: 'right'},
-                    ]}>
-                    {isRTL ? salon?.description_ar : salon?.description}
-                  </Text>
+                  <View style={{flexDirection: 'row'}}>
+                    <Text style={[styles.title]}>
+                      {isRTL ? salon?.name_ar : salon?.name}
+                    </Text>
+                  </View>
+                  <View style={{flexDirection: 'row'}}>
+                    <Text style={[styles.description]}>
+                      {isRTL ? salon?.description_ar : salon?.description}
+                    </Text>
+                  </View>
                   <View
                     style={[
                       styles.location,
                       {
-                        flexDirection:
-                          isRTL && Platform.OS === 'ios'
-                            ? 'row-reverse'
-                            : 'row',
+                        flexDirection: 'row',
                       },
                     ]}>
                     <Ionicons
@@ -524,16 +515,16 @@ const SalonScreen = ({route}) => {
                       size={15}
                       color={Colors.primary}
                     />
-                    <Text
-                      style={[
-                        styles.locationText,
-                        isRTL && {marginLeft: 0, marginRight: 5},
-                        i18n.language === 'ar' &&
-                          Platform.OS === 'ios' && {textAlign: 'right'},
-                      ]}
-                      numberOfLines={2}>
-                      {salon?.location?.address}
-                    </Text>
+                    <View style={{flexDirection: 'row'}}>
+                      <Text
+                        style={[
+                          styles.locationText,
+                          isRTL && {marginLeft: 0, marginRight: 5},
+                        ]}
+                        numberOfLines={2}>
+                        {salon?.location?.address}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               </View>

@@ -532,23 +532,10 @@ const Service = ({route}) => {
               : openDateBook(item.uuid, false)
           }>
           <View style={styles.serviceInfoContainer}>
-            <Text
-              style={[
-                styles.text,
-                i18n.language === 'ar' &&
-                  Platform.OS === 'ios' && {textAlign: 'right'},
-              ]}
-              numberOfLines={2}>
+            <Text style={[styles.text]} numberOfLines={2}>
               {isRTL ? item?.name_ar : item?.name}
             </Text>
-            <Text
-              style={[
-                styles.title2,
-                i18n.language === 'ar' &&
-                  Platform.OS === 'ios' && {textAlign: 'right'},
-              ]}>
-              {durationText}
-            </Text>
+            <Text style={[styles.title2]}>{durationText}</Text>
           </View>
 
           <View style={styles.serviceActionContainer}>
@@ -615,33 +602,21 @@ const Service = ({route}) => {
             accessibilityLabel={salonDetails?.name ?? 'Salon logo'}
           />
           <View style={styles.salonDetailsContainer}>
-            <Text
-              style={[
-                styles.title,
-                i18n.language === 'ar' &&
-                  Platform.OS === 'ios' && {textAlign: 'right'},
-              ]}
-              numberOfLines={1}>
-              {isRTL ? salonDetails?.name_ar : salonDetails?.name}
-            </Text>
-            <Text
-              style={[
-                styles.description,
-                i18n.language === 'ar' &&
-                  Platform.OS === 'ios' && {textAlign: 'right'},
-              ]}
-              numberOfLines={2}>
-              {isRTL ? salonDetails?.description_ar : salonDetails?.description}
-            </Text>
+            <View style={{flexDirection: 'row'}}>
+              <Text style={[styles.title]} numberOfLines={1}>
+                {isRTL ? salonDetails?.name_ar : salonDetails?.name}
+              </Text>
+            </View>
+            <View style={{flexDirection: 'row'}}>
+              <Text style={[styles.description]} numberOfLines={2}>
+                {isRTL
+                  ? salonDetails?.description_ar
+                  : salonDetails?.description}
+              </Text>
+            </View>
             <View style={styles.locationContainer}>
               <Ionicons name="location" size={14} color={Colors.primary} />
-              <Text
-                style={[
-                  styles.locationText,
-                  i18n.language === 'ar' &&
-                    Platform.OS === 'ios' && {textAlign: 'right'},
-                ]}
-                numberOfLines={1}>
+              <Text style={[styles.locationText]} numberOfLines={1}>
                 {salonDetails?.location?.address}
               </Text>
             </View>
@@ -691,22 +666,16 @@ const Service = ({route}) => {
       return (
         <View style={styles.subServRow}>
           <View style={{flex: 1}}>
-            <Text
-              style={[
-                styles.text,
-                i18n.language === 'ar' &&
-                  Platform.OS === 'ios' && {textAlign: 'right'},
-              ]}>
-              {item?.name}
-            </Text>
-            <Text
-              style={[
-                styles.title2,
-                i18n.language === 'ar' &&
-                  Platform.OS === 'ios' && {textAlign: 'right'},
-              ]}>
-              {item?.duration} {t('Mins')}
-            </Text>
+            <View style={{flexDirection: 'row'}}>
+              <View style={{flexDirection: 'row'}}>
+                <Text style={[styles.text]}>{item?.name}</Text>
+              </View>
+              <View style={{flexDirection: 'row'}}>
+                <Text style={[styles.title2]}>
+                  {item?.duration} {t('Mins')}
+                </Text>
+              </View>
+            </View>
           </View>
           <View style={{alignItems: 'center', flexDirection: 'row'}}>
             <Text style={styles.priceText}>
