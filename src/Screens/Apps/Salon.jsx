@@ -254,7 +254,7 @@ function useSalonDataWithCache(salonId, isAuth) {
           setSalon(incomingSalon);
           setCategories(incomingCategories);
           setIsFav(incomingFav);
-          console.log('Salon data after initial fetch:', incomingSalon); // <-- log fetched salon
+          console.log('Salon data after initial fetch:', incomingSalon);
         }
       })
       .catch(err => {
@@ -340,6 +340,7 @@ const SalonScreen = ({route}) => {
     }
   };
   const openAddressMap = async (lat, lng, label) => {
+    console.log('salon data location: ', salon);
     try {
       if (Platform.OS === 'android') {
         // Android → system intent chooser (Google Maps, Waze, Bing, etc.)
@@ -426,10 +427,12 @@ const SalonScreen = ({route}) => {
   );
 
   // cached logo
+  console.log('salon data for logoSource:', salon?.images?.logo);
   const logoSource =
     salon?.images?.logo &&
     salon?.images?.logo !==
-      'https://dashboard.ontimeqa.com/backend/assets/images/default-salon-logo.png'
+      'https://dashboard.ontimeqa.com/backend/assets/images/default-salon-logo.png' &&
+    salon?.images?.logo !== '/storage/0'
       ? {uri: `${hostImge}${salon.images.logo}`}
       : appLogo;
 

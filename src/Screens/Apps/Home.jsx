@@ -1,3 +1,5 @@
+/* eslint-disable react/react-in-jsx-scope */
+/* eslint-disable react-native/no-inline-styles */
 /* eslint-disable no-undef */
 /* eslint-disable react-hooks/exhaustive-deps */
 import {useCallback, useContext, useEffect, useMemo, useState} from 'react';

@@ -587,7 +587,8 @@ const Service = ({route}) => {
     const logoSource =
       salonDetails.images.logo &&
       salonDetails.images.logo !==
-        'https://dashboard.ontimeqa.com/backend/assets/images/default-salon-logo.png'
+        'https://dashboard.ontimeqa.com/backend/assets/images/default-salon-logo.png' &&
+      salonDetails?.images?.logo !== '/storage/0'
         ? {uri: `${hostImge}${salonDetails.images.logo}`}
         : appLogo;
 
