@@ -1,14 +1,21 @@
 {
-  "name": "Salons",
-  "displayName": "Salons",
-  "extra": {
-    "eas": {
-      "name": "Ontime",
-      "slug": "ontime",
-      "ios": {
-        "bundleIdentifier": "com.mohamedsaad.ontime"
-      },
-      "projectId": "09bd7f09-cffc-4343-9a75-92fd50c2cd66"
+  "expo": {
+    "name": "Salons",
+    "slug": "ontime",
+    "version": "5.0.0",
+    "ios": {
+      "bundleIdentifier": "com.mohamedsaad.ontime",
+      "buildNumber": "30"
+    },
+    "android": {
+      "package": "com.mohamedsaad.ontime",
+      "versionCode": 30
+    },
+    "extra": {
+      "eas": {
+        "projectId": "09bd7f09-cffc-4343-9a75-92fd50c2cd66",
+        "name": "Ontime"
+      }
     }
   }
 }
