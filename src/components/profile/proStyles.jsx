@@ -51,6 +51,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     marginBottom: 12,
+    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
   rowCard: {
     paddingVertical: 14,
