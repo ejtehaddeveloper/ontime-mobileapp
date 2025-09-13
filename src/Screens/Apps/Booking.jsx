@@ -55,43 +55,61 @@ const TABS = [
 ];
 
 function parseToTs(item) {
-  if (!item) return 0;
+  if (!item) {
+    return 0;
+  }
   const tryParse = s => {
-    if (!s) return NaN;
+    if (!s) {
+      return NaN;
+    }
     const parsed = Date.parse(s);
-    if (!isNaN(parsed)) return parsed;
+    if (!isNaN(parsed)) {
+      return parsed;
+    }
     return NaN;
   };
 
   if (item.created_at) {
     const p = tryParse(item.created_at);
-    if (!isNaN(p)) return p;
+    if (!isNaN(p)) {
+      return p;
+    }
   }
 
   if (item.date && item.start_time) {
     const combined = `${item.date} ${item.start_time}`;
     const p = tryParse(combined);
-    if (!isNaN(p)) return p;
+    if (!isNaN(p)) {
+      return p;
+    }
     try {
       const iso = `${item.date}T${item.start_time}`;
       const parsed = Date.parse(iso);
-      if (!isNaN(parsed)) return parsed;
+      if (!isNaN(parsed)) {
+        return parsed;
+      }
     } catch (e) {}
   }
 
   if (item.date) {
     const p = tryParse(item.date);
-    if (!isNaN(p)) return p;
+    if (!isNaN(p)) {
+      return p;
+    }
   }
 
   const idNum = Number(item.id);
-  if (!isNaN(idNum)) return idNum;
+  if (!isNaN(idNum)) {
+    return idNum;
+  }
 
   return 0;
 }
 
 function normalizeAndAttachTs(arr) {
-  if (!Array.isArray(arr)) return [];
+  if (!Array.isArray(arr)) {
+    return [];
+  }
   return arr.map(it => {
     const copy = {...it};
     copy._ts = parseToTs(it) || 0;
@@ -101,7 +119,9 @@ function normalizeAndAttachTs(arr) {
 
 function sortDescByTsThenId(arr) {
   return arr.slice().sort((a, b) => {
-    if ((b._ts || 0) !== (a._ts || 0)) return (b._ts || 0) - (a._ts || 0);
+    if ((b._ts || 0) !== (a._ts || 0)) {
+      return (b._ts || 0) - (a._ts || 0);
+    }
     const idA = Number(a.id) || 0;
     const idB = Number(b.id) || 0;
     return idB - idA;
@@ -127,7 +147,9 @@ function rebuildFromPages(pagesRef) {
   const merged = Array.from(map.values()).sort((a, b) => {
     const ta = a._ts || 0;
     const tb = b._ts || 0;
-    if (tb !== ta) return tb - ta;
+    if (tb !== ta) {
+      return tb - ta;
+    }
     const idA = Number(a.id) || 0;
     const idB = Number(b.id) || 0;
     return idB - idA;
@@ -160,21 +182,25 @@ function useBookings(initialPage = 1) {
   const fetchPage = useCallback(
     async (pageToFetch = 1, replace = false, suppressPrefetch = false) => {
       if (fetchingPagesRef.current.has(pageToFetch)) {
-        if (DEBUG)
+        if (DEBUG) {
           console.log('[BOOKINGS] skip fetch (already fetching)', pageToFetch);
+        }
         return;
       }
       fetchingPagesRef.current.add(pageToFetch);
-      if (pageToFetch === 1 && itemsRef.current.length === 0) setLoading(true);
+      if (pageToFetch === 1 && itemsRef.current.length === 0) {
+        setLoading(true);
+      }
 
       try {
         const resp = await getAppoint(pageToFetch);
-        if (DEBUG)
+        if (DEBUG) {
           console.log(
             '[BOOKINGS] raw resp for page',
             pageToFetch,
             resp && typeof resp,
           );
+        }
         const arr = Array.isArray(resp) ? resp : resp?.data || [];
         const pagination = resp?.pagination || null;
         if (pagination && typeof pagination.last_page === 'number') {
@@ -190,23 +216,25 @@ function useBookings(initialPage = 1) {
             ...pagesRef.current,
             [1]: pageSorted,
           };
-          if (DEBUG)
+          if (DEBUG) {
             console.log(
               '[BOOKINGS] replace page1 stored, count=',
               pageSorted.length,
             );
+          }
         } else {
           pagesRef.current = {
             ...pagesRef.current,
             [pageToFetch]: pageSorted,
           };
-          if (DEBUG)
+          if (DEBUG) {
             console.log(
               '[BOOKINGS] stored page',
               pageToFetch,
               'count=',
               pageSorted.length,
             );
+          }
         }
 
         // rebuild merged list and expose it
@@ -245,8 +273,9 @@ function useBookings(initialPage = 1) {
               ) {
                 // fire-and-forget, but suppress nested prefetches
                 fetchPage(next, false, true).catch(err => {
-                  if (DEBUG)
+                  if (DEBUG) {
                     console.log('[BOOKINGS] prefetch error page', next, err);
+                  }
                 });
               }
             }
@@ -257,17 +286,19 @@ function useBookings(initialPage = 1) {
                 if (
                   pagesRef.current[next] ||
                   fetchingPagesRef.current.has(next)
-                )
+                ) {
                   continue;
+                }
                 try {
                   const resp2 = await getAppoint(next);
                   const arr2 = Array.isArray(resp2) ? resp2 : resp2?.data || [];
                   if (!Array.isArray(arr2) || arr2.length === 0) {
-                    if (DEBUG)
+                    if (DEBUG) {
                       console.log(
                         '[BOOKINGS] fallback prefetch stopped (empty) at page',
                         next,
                       );
+                    }
                     break;
                   }
                   const normalized2 = normalizeAndAttachTs(arr2);
@@ -275,23 +306,25 @@ function useBookings(initialPage = 1) {
                     ...pagesRef.current,
                     [next]: sortDescByTsThenId(normalized2),
                   };
-                  if (DEBUG)
+                  if (DEBUG) {
                     console.log(
                       '[BOOKINGS] fallback prefetch stored page',
                       next,
                       'count=',
                       arr2.length,
                     );
+                  }
                   // rebuild merged each iteration so UI updates progressively
                   const merged2 = rebuildFromPages(pagesRef);
                   setItemsState(merged2);
                 } catch (e) {
-                  if (DEBUG)
+                  if (DEBUG) {
                     console.log(
                       '[BOOKINGS] fallback prefetch error page',
                       next,
                       e,
                     );
+                  }
                   break; // stop on error
                 } finally {
                   // ensure we remove fetching flag if getAppoint used in fetchPage set it; but here we used direct getAppoint
@@ -314,7 +347,9 @@ function useBookings(initialPage = 1) {
   // Update a single item across cached pages (or insert into page1 if not found)
   const updateItemInPages = useCallback(
     updated => {
-      if (!updated || updated.id === undefined || updated.id === null) return;
+      if (!updated || updated.id === undefined || updated.id === null) {
+        return;
+      }
       const norm = normalizeAndAttachTs([updated])[0];
       const pages = {...pagesRef.current};
       let changed = false;
@@ -335,8 +370,9 @@ function useBookings(initialPage = 1) {
         pagesRef.current = pages;
         const merged = rebuildFromPages(pagesRef);
         setItemsState(merged);
-        if (DEBUG)
+        if (DEBUG) {
           console.log('[BOOKINGS] updateItemInPages applied id=', norm.id);
+        }
       }
     },
     [setItemsState],
@@ -344,7 +380,9 @@ function useBookings(initialPage = 1) {
 
   const removeItemFromPages = useCallback(
     id => {
-      if (id === undefined || id === null) return;
+      if (id === undefined || id === null) {
+        return;
+      }
       const pages = {...pagesRef.current};
       let changed = false;
       Object.keys(pages).forEach(pn => {
@@ -359,8 +397,9 @@ function useBookings(initialPage = 1) {
         pagesRef.current = pages;
         const merged = rebuildFromPages(pagesRef);
         setItemsState(merged);
-        if (DEBUG)
+        if (DEBUG) {
           console.log('[BOOKINGS] removeItemFromPages removed id=', id);
+        }
       }
     },
     [setItemsState],
@@ -376,8 +415,12 @@ function useBookings(initialPage = 1) {
       .map(n => Number(n))
       .filter(n => !isNaN(n));
     const nextPage = keys.length ? Math.max(...keys) + 1 : 2;
-    if (fetchingPagesRef.current.has(nextPage)) return;
-    if (!hasMore) return;
+    if (fetchingPagesRef.current.has(nextPage)) {
+      return;
+    }
+    if (!hasMore) {
+      return;
+    }
     fetchPage(nextPage, false);
   }, [fetchPage, hasMore]);
 
@@ -388,7 +431,9 @@ function useBookings(initialPage = 1) {
       if (!fetchingPagesRef.current.has(p) && !pagesRef.current[p]) {
         // fire-and-forget; use suppressed prefetch to prevent recursion
         fetchPage(p, false, true).catch(e => {
-          if (DEBUG) console.log('forceFetchAllPages error for', p, e);
+          if (DEBUG) {
+            console.log('forceFetchAllPages error for', p, e);
+          }
         });
       }
     }
@@ -487,16 +532,22 @@ const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
 });
 
 function formatTimeTo12Hour(time24) {
-  if (!time24) return '';
+  if (!time24) {
+    return '';
+  }
   const [hrs, mins] = time24.split(':');
   let hour = parseInt(hrs, 10);
   const ampm = hour >= 12 ? 'PM' : 'AM';
   hour = hour % 12;
-  if (hour === 0) hour = 12;
+  if (hour === 0) {
+    hour = 12;
+  }
   return `${hour}:${mins} ${ampm}`;
 }
 function formatDateShort(dateString) {
-  if (!dateString) return '';
+  if (!dateString) {
+    return '';
+  }
   try {
     const date = new Date(dateString);
     const options = {weekday: 'short', day: 'numeric', month: 'short'};
@@ -593,7 +644,9 @@ const Booking = () => {
   useEffect(() => {
     if (DEBUG) {
       const t = setTimeout(() => {
-        if (DEBUG) console.log('[BOOKING] DEBUG: forceFetchAllPages triggered');
+        if (DEBUG) {
+          console.log('[BOOKING] DEBUG: forceFetchAllPages triggered');
+        }
         forceFetchAllPages();
       }, 3000);
       return () => clearTimeout(t);
@@ -629,7 +682,9 @@ const Booking = () => {
             )}
             contentContainerStyle={styles.listContent}
             onEndReached={() => {
-              if (!onEndReachedCalledDuringMomentum.current) return;
+              if (!onEndReachedCalledDuringMomentum.current) {
+                return;
+              }
               handleEndReached();
               onEndReachedCalledDuringMomentum.current = false;
             }}

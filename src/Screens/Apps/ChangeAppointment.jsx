@@ -927,11 +927,11 @@ const styles = StyleSheet.create({
   // actions
   actionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+
     marginTop: 14,
   },
   primaryBtn: {
-    width: '62%',
+    width: '100%',
     height: 56,
     backgroundColor: Colors.primary,
     borderRadius: 14,
