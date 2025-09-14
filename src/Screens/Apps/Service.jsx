@@ -537,7 +537,9 @@ const Service = ({route}) => {
                 {isRTL ? item?.name_ar : item?.name}
               </Text>
             </View>
-            <Text style={[styles.title2]}>{durationText}</Text>
+            <Text style={[styles.title2, {flexDirection: 'row'}]}>
+              {durationText}
+            </Text>
           </View>
 
           <View style={styles.serviceActionContainer}>
@@ -896,7 +898,11 @@ const styles = StyleSheet.create({
   serviceInfoContainer: {flex: 1, paddingRight: 12},
   serviceActionContainer: {flexDirection: 'row', alignItems: 'center'},
   text: {color: Colors.text, fontSize: 16, fontWeight: '700'},
-  title2: {fontSize: 12, color: '#9aa0a6', marginTop: 6},
+  title2: {
+    fontSize: 12,
+    color: '#9aa0a6',
+    marginTop: 6,
+  },
   priceText: {
     fontSize: 14,
     fontWeight: '700',

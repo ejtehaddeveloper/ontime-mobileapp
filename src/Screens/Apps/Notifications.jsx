@@ -53,21 +53,20 @@ const NotificationRow = memo(({item, onPress}) => {
         }}
         style={styles.image}
       />
-      <View style={{flex: 1, justifyContent: 'center'}}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+          flexDirection: 'column',
+        }}>
         <View style={{flexDirection: 'row'}}>
           <Text style={[styles.text, {fontWeight: '300', fontSize: 13}]}>
             {i18n.language === 'en' ? item?.title : item?.title_ar}
           </Text>
         </View>
         <View style={{flexDirection: 'row'}}>
-          <Text
-            style={[
-              styles.details,
-              i18n.language === 'ar' &&
-                Platform.OS === 'ios' && {textAlign: 'right'},
-            ]}
-            numberOfLines={3}
-            ellipsizeMode="tail">
+          <Text style={[styles.details]} numberOfLines={3} ellipsizeMode="tail">
             {i18n.language === 'en' ? item?.body : item?.body_ar}
           </Text>
         </View>
