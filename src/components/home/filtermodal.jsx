@@ -143,22 +143,19 @@ const FilterModal = ({
                   accessibilityRole="button">
                   <Text style={styles.clearFilterText}>{t('Clear')}</Text>
                 </TouchableOpacity>
-
-                <Text style={styles.sectionTitle}>{t('Services')}</Text>
+                <View style={{flexDirection: 'row'}}>
+                  <Text style={styles.sectionTitle}>{t('Services')}</Text>
+                </View>
                 <View style={styles.chipRow}>{servicesRender}</View>
-
-                <Text style={styles.sectionTitle}>{t('Address')}</Text>
+                <View style={{flexDirection: 'row'}}>
+                  <Text style={styles.sectionTitle}>{t('Address')}</Text>
+                </View>
                 <View style={styles.chipRow}>{addressesRender}</View>
-
-                <Text
-                  style={[
-                    styles.sectionTitle,
-                    {marginTop: 8},
-                    i18n.language === 'ar' &&
-                      Platform.OS === 'ios' && {textAlign: 'right'},
-                  ]}>
-                  {t('Sort By')}
-                </Text>
+                <View style={{flexDirection: 'row'}}>
+                  <Text style={[styles.sectionTitle, {marginTop: 8}]}>
+                    {t('Sort By')}
+                  </Text>
+                </View>
                 {sortingOptions.map(option => (
                   <TouchableOpacity
                     key={option.id}
@@ -183,10 +180,11 @@ const FilterModal = ({
                     </View>
                   </TouchableOpacity>
                 ))}
-
-                <Text style={[styles.sectionTitle, {marginTop: 8}]}>
-                  {t('Price')}
-                </Text>
+                <View style={{flexDirection: 'row'}}>
+                  <Text style={[styles.sectionTitle, {marginTop: 8}]}>
+                    {t('Price')}
+                  </Text>
+                </View>
                 <View style={styles.priceInputContainer}>
                   <TextInput
                     placeholder={t('Max')}
@@ -207,7 +205,6 @@ const FilterModal = ({
                     accessibilityLabel="Min price"
                   />
                 </View>
-
                 <TouchableOpacity
                   style={[
                     styles.button,
@@ -236,7 +233,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalContentWrapper: {
-    height: '90%', // 75% of screen height
+    height: '90%',
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,

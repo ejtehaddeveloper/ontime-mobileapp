@@ -532,14 +532,18 @@ const Service = ({route}) => {
               : openDateBook(item.uuid, false)
           }>
           <View style={styles.serviceInfoContainer}>
-            <Text style={[styles.text]} numberOfLines={2}>
-              {isRTL ? item?.name_ar : item?.name}
-            </Text>
+            <View style={{flexDirection: 'row'}}>
+              <Text style={[styles.text]} numberOfLines={2}>
+                {isRTL ? item?.name_ar : item?.name}
+              </Text>
+            </View>
             <Text style={[styles.title2]}>{durationText}</Text>
           </View>
 
           <View style={styles.serviceActionContainer}>
-            <Text style={styles.priceText}>{priceText}</Text>
+            <View style={{flexDirection: 'row'}}>
+              <Text style={styles.priceText}>{priceText}</Text>
+            </View>
             <TouchableOpacity
               style={[styles.selectButton, isSub ? styles.detailsButton : null]}
               onPress={() =>
@@ -667,14 +671,12 @@ const Service = ({route}) => {
         <View style={styles.subServRow}>
           <View style={{flex: 1}}>
             <View style={{flexDirection: 'row'}}>
-              <View style={{flexDirection: 'row'}}>
-                <Text style={[styles.text]}>{item?.name}</Text>
-              </View>
-              <View style={{flexDirection: 'row'}}>
-                <Text style={[styles.title2]}>
-                  {item?.duration} {t('Mins')}
-                </Text>
-              </View>
+              <Text style={[styles.text]}>{item?.name}</Text>
+            </View>
+            <View style={{flexDirection: 'row'}}>
+              <Text style={[styles.title2]}>
+                {item?.duration} {t('Mins')}
+              </Text>
             </View>
           </View>
           <View style={{alignItems: 'center', flexDirection: 'row'}}>

@@ -1,3 +1,4 @@
+/* eslint-disable react/no-unstable-nested-components */
 /* eslint-disable react-native/no-inline-styles */
 /**
  * Refactored Cart screen
@@ -115,7 +116,9 @@ const Cart = () => {
         await deleteCart(cartItemId);
         // if last item removed, go back
         setTimeout(() => {
-          if (cartItems.length === 1) navigation.goBack();
+          if (cartItems.length === 1) {
+            navigation.goBack();
+          }
         }, 100);
       } catch (err) {
         console.error('deleteCart error:', err);
@@ -186,43 +189,67 @@ const Cart = () => {
   // render each cart row (memoized)
   const renderServiceItem = useCallback(
     ({item}) => {
+      console.log(item);
       const serviceName =
         i18n.language === 'ar' ? item?.service?.name_ar : item?.service?.name;
-      const employeeName =
-        i18n.language === 'ar' ? item?.employee?.name_ar : item?.employee?.name;
+      const employeeName = item?.employee?.name;
       const dateStr = item?.date ? item.date.slice(5) : '';
       const price = item?.service?.price ?? 0;
 
       return (
         <View style={styles.servRow}>
           <View style={styles.servLeft}>
-            <Text style={styles.serviceName} numberOfLines={2}>
-              {serviceName}
-            </Text>
-            <Text style={styles.employeeName} numberOfLines={1}>
-              {employeeName}
-            </Text>
-            <Text style={styles.smallMeta}>
-              {dateStr} {t('at')} {item?.start_time}
-            </Text>
+            <View style={{flexDirection: 'row'}}>
+              <Text style={styles.serviceName} numberOfLines={2}>
+                {serviceName}
+              </Text>
+            </View>
+            <View style={{flexDirection: 'row'}}>
+              <Text style={styles.employeeName} numberOfLines={1}>
+                {employeeName}
+              </Text>
+            </View>
           </View>
 
           <View style={styles.servRight}>
-            <Text style={styles.price}>
-              {price} <Text style={styles.priceCurrency}>{currencyLabel}</Text>
-            </Text>
-
-            <TouchableOpacity
-              accessible
-              accessibilityLabel={i18n.language === 'ar' ? 'إزالة' : 'Remove'}
-              style={styles.removeBtn}
-              onPress={() => handleDeleteItem(item?.cart_item_id)}>
-              <Ionicons
-                name="remove-circle-outline"
-                size={22}
-                color={Colors.primary}
-              />
-            </TouchableOpacity>
+            <View style={{flexDirection: 'column'}}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 10,
+                }}>
+                <View style={{flexDirection: 'row'}}>
+                  <Text style={styles.price}>
+                    {price}{' '}
+                    <View style={{flexDirection: 'row'}}>
+                      <Text style={styles.priceCurrency}>{currencyLabel}</Text>
+                    </View>
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  accessible
+                  accessibilityLabel={
+                    i18n.language === 'ar' ? 'إزالة' : 'Remove'
+                  }
+                  style={styles.removeBtn}
+                  onPress={() => handleDeleteItem(item?.cart_item_id)}>
+                  <Ionicons
+                    name="remove-circle-outline"
+                    size={24}
+                    color={Colors.primary}
+                  />
+                </TouchableOpacity>
+              </View>
+              <View style={{flexDirection: 'row'}}>
+                <View style={{flexDirection: 'row'}}>
+                  <Text style={styles.smallMeta}>
+                    {dateStr} {t('at')} {item?.start_time}
+                  </Text>
+                </View>
+              </View>
+            </View>
           </View>
         </View>
       );
@@ -233,8 +260,9 @@ const Cart = () => {
   const listKeyExtractor = useCallback(item => String(item.cart_item_id), []);
 
   const totalPriceDisplay = useMemo(() => {
-    if (!totals) return `0 ${currencyLabel}`;
-    // totals.total_price might be number or string depending on API
+    if (!totals) {
+      return `0 ${currencyLabel}`;
+    }
     return `${totals.total_price ?? '0'} ${currencyLabel}`;
   }, [totals]);
 
@@ -372,7 +400,11 @@ const styles = StyleSheet.create({
 
   loaderWrap: {flex: 1, alignItems: 'center', justifyContent: 'center'},
 
-  listContent: {paddingHorizontal: 20, paddingBottom: 24},
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    marginVertical: 50,
+  },
 
   servRow: {
     flexDirection: 'row',
@@ -382,7 +414,7 @@ const styles = StyleSheet.create({
   },
   servLeft: {flex: 1, paddingRight: 12},
   serviceName: {fontSize: 15, fontWeight: '700', color: Colors.text},
-  employeeName: {fontSize: 12, color: Colors.black3, marginTop: 6},
+  employeeName: {fontSize: 12, color: Colors.black3},
   smallMeta: {fontSize: 11, color: Colors.black3, marginTop: 4},
 
   servRight: {alignItems: 'flex-end', justifyContent: 'center'},

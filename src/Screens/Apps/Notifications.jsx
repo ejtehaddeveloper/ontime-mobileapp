@@ -60,7 +60,14 @@ const NotificationRow = memo(({item, onPress}) => {
           </Text>
         </View>
         <View style={{flexDirection: 'row'}}>
-          <Text style={[styles.details]} numberOfLines={3} ellipsizeMode="tail">
+          <Text
+            style={[
+              styles.details,
+              i18n.language === 'ar' &&
+                Platform.OS === 'ios' && {textAlign: 'right'},
+            ]}
+            numberOfLines={3}
+            ellipsizeMode="tail">
             {i18n.language === 'en' ? item?.body : item?.body_ar}
           </Text>
         </View>
@@ -352,8 +359,6 @@ const styles = StyleSheet.create({
   details: {
     fontSize: 10,
     fontWeight: '600',
-    marginLeft: i18n.language === 'ar' ? 0 : 15,
-    marginRight: i18n.language === 'ar' ? 15 : 0,
     color: '#a1a1a1',
     width: 185,
   },

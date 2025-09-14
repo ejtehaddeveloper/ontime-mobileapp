@@ -122,7 +122,9 @@ const Header = React.memo(({onBack, title, statusLabel, isRTL}) => (
     />
     <Text style={styles.headerTitle}>{title}</Text>
     {statusLabel ? (
-      <Text style={styles.headerStatus}>{statusLabel}</Text>
+      <View style={{borderRadius: 12}}>
+        <Text style={styles.headerStatus}>{statusLabel}</Text>
+      </View>
     ) : (
       <View style={{width: 22}} />
     )}

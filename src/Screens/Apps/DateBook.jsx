@@ -1095,34 +1095,44 @@ const DateBook = ({route}) => {
                   renderItem={({item}) => (
                     <View style={styles.serv}>
                       <View>
-                        <Text style={styles.text}>
-                          {i18n.language === 'ar'
-                            ? item?.service?.name_ar
-                            : item?.service?.name}
-                        </Text>
-                        <Text style={styles.title2}>
-                          {item?.employee?.name
-                            ?.split(' ')
-                            .slice(0, 2)
-                            .join(' ')}
-                        </Text>
+                        <View style={{flexDirection: 'row'}}>
+                          <Text style={styles.text}>
+                            {i18n.language === 'ar'
+                              ? item?.service?.name_ar
+                              : item?.service?.name}
+                          </Text>
+                        </View>
+                        <View style={{flexDirection: 'row'}}>
+                          <Text style={styles.title2}>
+                            {item?.employee?.name
+                              ?.split(' ')
+                              .slice(0, 2)
+                              .join(' ')}
+                          </Text>
+                        </View>
                       </View>
                       <View style={{flexDirection: 'row'}}>
                         <View>
-                          <Text style={{marginRight: 15}}>
-                            {String(item?.service?.price).slice(0, -3)}{' '}
-                            <Text style={{fontSize: 12}}>
-                              {i18n.language === 'ar' ? 'ر.ق' : 'QAR'}
+                          <View style={{flexDirection: 'row'}}>
+                            <Text style={{marginRight: 15}}>
+                              {String(item?.service?.price).slice(0, -3)}{' '}
+                              <View style={{flexDirection: 'row'}}>
+                                <Text style={{fontSize: 12}}>
+                                  {i18n.language === 'ar' ? 'ر.ق' : 'QAR'}
+                                </Text>
+                              </View>
                             </Text>
-                          </Text>
-                          <Text style={[styles.title2, {fontSize: 10}]}>
-                            {item?.date.slice(5)} {t('at')} {item?.start_time}
-                          </Text>
+                          </View>
+                          <View style={{flexDirection: 'row'}}>
+                            <Text style={[styles.title2, {fontSize: 10}]}>
+                              {item?.date.slice(5)} {t('at')} {item?.start_time}
+                            </Text>
+                          </View>
                         </View>
                         <TouchableOpacity
                           style={[
                             {
-                              alignSelf: 'flex-end',
+                              alignSelf: 'center',
                               justifyContent: 'flex-end',
                               marginLeft: 10,
                             },
@@ -1365,6 +1375,8 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 30,
+    marginTop: 15,
   },
   buttonText: {color: '#fff', fontWeight: '700'},
   contentContainer: {paddingBottom: 30},

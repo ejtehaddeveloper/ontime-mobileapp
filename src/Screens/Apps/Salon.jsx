@@ -79,6 +79,7 @@ const Header = React.memo(({onBack, onToggleFav, isFav, isRTL}) => {
         name={isRTL ? 'arrow-forward' : 'arrow-back'}
         size={25}
         onPress={onBack}
+        accessibilityLabel={t('Back')}
       />
       <TouchableOpacity
         onPress={onToggleFav}
@@ -339,7 +340,11 @@ const SalonScreen = ({route}) => {
       Linking.openURL(`tel:${salon.contact_info.phone}`);
     }
   };
-  const openAddressMap = async (lat, lng, label) => {
+  const openAddressMap = async (
+    lat = salon?.address?.lat,
+    lng = salon?.address?.lng,
+    label = salon?.address?.label,
+  ) => {
     console.log('salon data location: ', salon);
     console.log('salon date for id:', salonId);
     try {
@@ -718,9 +723,10 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
     padding: 15,
     paddingHorizontal: 35,
-    alignItems: 'center',
   },
   salonInfoWrap: {
     flexDirection: 'column',
