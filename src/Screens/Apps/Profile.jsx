@@ -35,7 +35,7 @@ import styles from '../../components/profile/proStyles';
 import LanguageModal from '../../components/profile/LanguageModal';
 import ConfirmModal from '../../components/profile/ConfirmModal';
 import EditModal from '../../components/profile/EditModal';
-
+import RNRestart from 'react-native-restart';
 const Profile = () => {
   // ---- state ----
   const [langModalVisible, setLangModalVisible] = useState(false);
@@ -114,36 +114,16 @@ const Profile = () => {
   }, []);
 
   const applyLanguageChange = useCallback(async newLang => {
-    // newLang = 'en' | 'ar'
     try {
-      // persist immediately
       await AsyncStorage.setItem('language', newLang);
-    } catch (err) {
-      console.log('Error persisting language', err);
-    }
-
-    try {
-      // change i18n language
       await i18n.changeLanguage(newLang);
-    } catch (err) {
-      console.log('i18n.changeLanguage error', err);
-    }
 
-    try {
-      // apply RTL if needed (forceRTL returns boolean)
-      const shouldRTL = newLang === 'ar';
-      if (I18nManager.isRTL !== shouldRTL) {
-        // Force and restart to apply RTL layout safely
-        I18nManager.forceRTL(shouldRTL);
-        ReactNativeRestart.restart();
-        return; // app will restart
-      } else {
-        // no restart needed if RTL state unchanged — still update selectedLang
-        setSelectedLang(newLang);
-      }
-    } catch (err) {
-      console.log('Error applying RTL change', err);
+      await I18nManager.forceRTL(newLang === 'ar');
+      RNRestart.restart();
+    } catch (error) {
+      console.log('Error changing language:', error);
     }
+    setSelectedLang(false);
   }, []);
 
   // ---- notification toggle ----

@@ -35,7 +35,7 @@ import i18n from '../../assets/locales/i18';
 import {screenHeight} from '../../assets/constants/ScreenSize';
 import hostImge from '../../context/hostImge';
 
-const appLogo = require('../../assets/images/logo22.jpg');
+const appLogo = require('../../assets/images/logoem.png');
 const CACHE_KEY = 'favorites_cache_v1';
 
 const DEFAULT_LOGOS = [

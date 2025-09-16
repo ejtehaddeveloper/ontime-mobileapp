@@ -185,6 +185,7 @@ const Cart = () => {
       fetchCart();
     }
   }, [fetchCart, navigation]);
+  const stripZeros = p => String(p).replace(/\.0+$/, '');
 
   // render each cart row (memoized)
   const renderServiceItem = useCallback(
@@ -222,10 +223,7 @@ const Cart = () => {
                 }}>
                 <View style={{flexDirection: 'row'}}>
                   <Text style={styles.price}>
-                    {price}{' '}
-                    <View style={{flexDirection: 'row'}}>
-                      <Text style={styles.priceCurrency}>{currencyLabel}</Text>
-                    </View>
+                    {stripZeros(price)} {' ' + currencyLabel}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -263,7 +261,7 @@ const Cart = () => {
     if (!totals) {
       return `0 ${currencyLabel}`;
     }
-    return `${totals.total_price ?? '0'} ${currencyLabel}`;
+    return `${stripZeros(totals.total_price) ?? '0'} ${currencyLabel}`;
   }, [totals]);
 
   // header back

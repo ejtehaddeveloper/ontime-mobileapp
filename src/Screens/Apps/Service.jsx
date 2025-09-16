@@ -1,16 +1,8 @@
-/* eslint-disable no-unused-vars */
-/* eslint-disable curly */
-/* eslint-disable react/no-unstable-nested-components */
 /* eslint-disable react-native/no-inline-styles */
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useContext,
-} from 'react';
+import React, {useContext, useEffect, useState} from 'react';
 import {
   FlatList,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -20,9 +12,6 @@ import {
   StatusBar,
   Modal,
   ActivityIndicator,
-  SafeAreaView,
-  Platform,
-  InteractionManager,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -34,24 +23,12 @@ import {
   getSubCategory,
   getSubServices,
 } from '../../context/api';
+import Loading from '../../assets/common/Loading';
 import i18n from '../../assets/locales/i18';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
 import hostImge from '../../context/hostImge';
-
-// ======= Persisted global cache to survive HMR / dev reloads =======
-const CACHE_GLOBAL_KEY = '__PIXELENGINE_IN_MEMORY_CACHE_V1__';
-const inMemoryCache =
-  (typeof global !== 'undefined' && global[CACHE_GLOBAL_KEY]) || new Map();
-if (typeof global !== 'undefined') {
-  global[CACHE_GLOBAL_KEY] = inMemoryCache;
-}
-// ===================================================================
-
-// how many services to prewarm subservices for (first N)
-const PREWARM_COUNT = 3;
-
-// fallback app logo - adjust path if you store it elsewhere
-const appLogo = require('../../assets/images/logo.jpg');
+import {colors} from 'react-native-keyboard-controller/lib/typescript/components/KeyboardToolbar/colors';
 
 const Service = ({route}) => {
   const {t} = useTranslation();
@@ -60,958 +37,737 @@ const Service = ({route}) => {
   const navigation = useNavigation();
   const isRTL = i18n.language === 'ar';
 
-  // main state
-  const [salonDetails, setSalonDetails] = useState(null);
-  const [categories, setCategories] = useState([]);
-  const [services, setServices] = useState([]);
-  const [subServices, setSubServices] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const [salonInfo, setSalons] = useState([]);
+  const [subCat, setSubCat] = useState([]);
+  const [subService, setSubService] = useState([]);
+  const [SalonInfo, setSalonInfo] = useState([]);
+  const [loading, setloading] = useState(true);
+  const [isVisible, setIsVisible] = useState(false);
+  const [Error, setError] = useState('');
+  const appLogo = require('../../assets/images/logoem.png');
 
-  const [loading, setLoading] = useState(true); // initial page load
-  const [categoryLoading, setCategoryLoading] = useState(false); // loading services for category
-  const [subServiceLoading, setSubServiceLoading] = useState(false); // loading subservices for modal
-  const [showSubModal, setShowSubModal] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const handleGoBack = () => navigation.goBack();
 
-  // mounted ref
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  // FlatList ref + optional remount key
-  const flatRef = useRef(null);
-  const [listKey, setListKey] = useState(0);
-
-  // small helper to nudge list layout on iOS
-  const nudgeFlatListLayout = useCallback(() => {
-    if (Platform.OS === 'ios') {
-      requestAnimationFrame(() => {
-        flatRef.current?.scrollToOffset?.({offset: 0, animated: false});
-      });
+  const fetchData = async uid => {
+    try {
+      const data = await getServices(salonId, uid);
+      setSalons(data);
+    } catch (error) {
+      console.log('Error fetching data:', error);
+    } finally {
+      setloading(false);
     }
-  }, []);
-
-  // ensure consistent cache key
-  const cacheKey = String(salonId);
-
-  // pending navigation ref used when we need to close modal first then navigate
-  // shape: { uuid: string, isSub: boolean } or null
-  const pendingNavRef = useRef(null);
-
-  // initial load (salon details + categories + initial services)
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadFromCache = () => {
-      const cached = inMemoryCache.get(cacheKey);
-      if (!cached) {
-        return false;
-      }
-      if (!cancelled && mountedRef.current) {
-        setSalonDetails(cached.salonDetails ?? null);
-        setCategories(
-          Array.isArray(cached.categories) ? [...cached.categories] : [],
-        );
-        const initialCat =
-          cached.selectedCategory ??
-          (cached.categories && cached.categories[0]
-            ? cached.categories[0].uuid
-            : null);
-        setSelectedCategory(initialCat);
-        const svcs =
-          (cached.servicesForCategory &&
-            cached.servicesForCategory[initialCat]) ||
-          [];
-        setServices(Array.isArray(svcs) ? [...svcs] : []);
-        setErrorMsg(cached.errorMsg ?? '');
-        setLoading(false);
-        nudgeFlatListLayout();
-      }
-      return true;
-    };
-
-    const fetchAndCache = async (categoryUuid = null, isInitial = false) => {
-      try {
-        if (isInitial) {
-          setLoading(true);
-        }
-
-        const [salonResp, categoriesResp] = await Promise.all([
-          getSalons(salonId),
-          getSubCategory(uuid, salonId),
-        ]);
-
-        const incomingSalonDetails = salonResp ?? null;
-        const incomingCategories = Array.isArray(categoriesResp)
-          ? categoriesResp
-          : [];
-
-        const activeUuid =
-          categoryUuid ??
-          (incomingCategories[0] ? incomingCategories[0].uuid : null);
-
-        let servicesResp = [];
-        if (activeUuid) {
-          servicesResp = (await getServices(salonId, activeUuid)) ?? [];
-        }
-
-        if (!cancelled && mountedRef.current) {
-          const cached = inMemoryCache.get(cacheKey) || {};
-          const newCache = {
-            ...cached,
-            salonDetails: incomingSalonDetails,
-            categories: incomingCategories,
-            servicesForCategory: {
-              ...(cached.servicesForCategory || {}),
-              [activeUuid]: servicesResp,
-            },
-            selectedCategory: activeUuid,
-            lastFetchedAt: Date.now(),
-          };
-          inMemoryCache.set(cacheKey, newCache);
-
-          setSalonDetails(incomingSalonDetails);
-          setCategories(
-            Array.isArray(incomingCategories) ? [...incomingCategories] : [],
-          );
-          setSelectedCategory(activeUuid);
-          setServices(Array.isArray(servicesResp) ? [...servicesResp] : []);
-          setErrorMsg('');
-          nudgeFlatListLayout();
-        }
-      } catch (err) {
-        console.log('Service fetch error', err);
-        if (!cancelled && mountedRef.current) {
-          setErrorMsg(t('There is no services right now'));
-        }
-      } finally {
-        if (!cancelled && mountedRef.current) {
-          setLoading(false);
-        }
-      }
-    };
-
-    const hadCache = loadFromCache();
-    fetchAndCache(hadCache ? undefined : null, !hadCache);
-
-    return () => {
-      cancelled = true;
-    };
-  }, [salonId, uuid, cacheKey, nudgeFlatListLayout, t]);
-
-  // category selection — fetch services and prewarm subservices for first N
-  const handleCategorySelect = useCallback(
-    async catUuid => {
-      if (!catUuid) {
-        setSelectedCategory(null);
-        setServices([]);
-        return;
-      }
-      if (selectedCategory === catUuid) {
-        setSelectedCategory(null);
-        setServices([]);
-        return;
-      }
-
-      setCategoryLoading(true);
-      try {
-        const cached = inMemoryCache.get(cacheKey) || {};
-        if (
-          cached.servicesForCategory &&
-          Array.isArray(cached.servicesForCategory[catUuid])
-        ) {
-          const svcFromCache = cached.servicesForCategory[catUuid];
-          setServices(Array.isArray(svcFromCache) ? [...svcFromCache] : []);
-          setSelectedCategory(catUuid);
-          setErrorMsg('');
-          nudgeFlatListLayout();
-        } else {
-          const svc = (await getServices(salonId, catUuid)) ?? [];
-          setServices(Array.isArray(svc) ? [...svc] : []);
-          setSelectedCategory(catUuid);
-          setErrorMsg('');
-          inMemoryCache.set(cacheKey, {
-            ...cached,
-            servicesForCategory: {
-              ...(cached.servicesForCategory || {}),
-              [catUuid]: svc,
-            },
-            selectedCategory: catUuid,
-            lastFetchedAt: Date.now(),
-          });
-        }
-
-        const cacheAfter = inMemoryCache.get(cacheKey) || {};
-        const svcList =
-          cacheAfter.servicesForCategory &&
-          cacheAfter.servicesForCategory[catUuid]
-            ? cacheAfter.servicesForCategory[catUuid]
-            : Array.isArray(services)
-            ? services
-            : [];
-
-        if (Array.isArray(svcList) && svcList.length > 0) {
-          const toPrewarm = svcList
-            .slice(0, PREWARM_COUNT)
-            .map(s => s.uuid)
-            .filter(Boolean);
-
-          const missing = [];
-          const cachedSubMap = cacheAfter.subServicesForService || {};
-          toPrewarm.forEach(uuidToCheck => {
-            if (!Array.isArray(cachedSubMap[uuidToCheck]))
-              missing.push(uuidToCheck);
-          });
-
-          if (missing.length > 0) {
-            try {
-              const prePromises = missing.map(u =>
-                getSubServices(u).catch(() => []),
-              );
-              const allSubs = await Promise.all(prePromises);
-              const newSubMap = {...(cacheAfter.subServicesForService || {})};
-              cacheAfter.servicesForCategory =
-                cacheAfter.servicesForCategory || {};
-              const svcArr = cacheAfter.servicesForCategory[catUuid] || svcList;
-
-              missing.forEach((m, idx) => {
-                const subsForM = Array.isArray(allSubs[idx])
-                  ? allSubs[idx]
-                  : [];
-                newSubMap[m] = subsForM;
-
-                const prices = subsForM
-                  .map(x => {
-                    const p = parseFloat(x.price);
-                    return Number.isFinite(p) ? p : null;
-                  })
-                  .filter(Boolean);
-                const durations = subsForM
-                  .map(x => {
-                    const d = parseInt(x.duration, 10);
-                    return Number.isFinite(d) ? d : null;
-                  })
-                  .filter(Boolean);
-                const min_price = prices.length ? Math.min(...prices) : null;
-                const max_price = prices.length ? Math.max(...prices) : null;
-                const min_duration = durations.length
-                  ? Math.min(...durations)
-                  : null;
-                const max_duration = durations.length
-                  ? Math.max(...durations)
-                  : null;
-
-                cacheAfter.servicesForCategory[catUuid] = svcArr.map(s => {
-                  if (s.uuid === m) {
-                    return {
-                      ...s,
-                      min_price,
-                      max_price,
-                      min_duration,
-                      max_duration,
-                    };
-                  }
-                  return s;
-                });
-              });
-
-              inMemoryCache.set(cacheKey, {
-                ...cacheAfter,
-                subServicesForService: newSubMap,
-                servicesForCategory: cacheAfter.servicesForCategory,
-                lastFetchedAt: Date.now(),
-              });
-
-              if (mountedRef.current && selectedCategory === catUuid) {
-                const arr =
-                  cacheAfter.servicesForCategory &&
-                  cacheAfter.servicesForCategory[catUuid]
-                    ? cacheAfter.servicesForCategory[catUuid]
-                    : services;
-                setServices(Array.isArray(arr) ? [...arr] : services);
-                nudgeFlatListLayout();
-              }
-            } catch (err) {
-              console.log('prewarm subservices error', err);
-            }
-          }
-        }
-      } catch (err) {
-        console.log('Error fetching services for category', err);
-        setErrorMsg(t('There is no services right now'));
-      } finally {
-        setCategoryLoading(false);
-      }
-    },
-    [cacheKey, nudgeFlatListLayout, salonId, selectedCategory, services, t],
-  );
-
-  // open datebook
-  const openDateBook = useCallback(
-    (serviceID, isSub = false) => {
-      if (!isAuth) {
-        navigation.navigate('Auth');
-        return;
-      }
-      navigation.navigate('DateBook', {
-        salonId,
-        serviceID,
-        isSubService: isSub ? 1 : 0,
-      });
-    },
-    [navigation, isAuth, salonId],
-  );
-
-  // robust open subservices: update cache & services state, bump listKey, open modal after interactions
-  const handleOpenSubServices = useCallback(
-    async serviceUuid => {
-      if (!serviceUuid) return;
-      setSubServiceLoading(true);
-
-      const computeStats = subs => {
-        const prices = (subs || [])
-          .map(x => {
-            const p = parseFloat(x.price);
-            return Number.isFinite(p) ? p : null;
-          })
-          .filter(Boolean);
-        const durations = (subs || [])
-          .map(x => {
-            const d = parseInt(x.duration, 10);
-            return Number.isFinite(d) ? d : null;
-          })
-          .filter(Boolean);
-
-        return {
-          min_price: prices.length ? Math.min(...prices) : null,
-          max_price: prices.length ? Math.max(...prices) : null,
-          min_duration: durations.length ? Math.min(...durations) : null,
-          max_duration: durations.length ? Math.max(...durations) : null,
-        };
-      };
-
-      try {
-        const cached = inMemoryCache.get(cacheKey) || {};
-        const cachedList =
-          cached.subServicesForService &&
-          cached.subServicesForService[serviceUuid];
-
-        const applyStatsToCacheAndState = (subsArray = []) => {
-          const stats = computeStats(subsArray);
-
-          // update subServicesForService map and servicesForCategory entries
-          const after = inMemoryCache.get(cacheKey) || {};
-          const newSubMap = {...(after.subServicesForService || {})};
-          if (Array.isArray(subsArray)) newSubMap[serviceUuid] = subsArray;
-
-          const updatedServicesForCategory = {
-            ...(after.servicesForCategory || {}),
-          };
-          Object.keys(updatedServicesForCategory).forEach(catKey => {
-            const arr = Array.isArray(updatedServicesForCategory[catKey])
-              ? updatedServicesForCategory[catKey]
-              : [];
-            updatedServicesForCategory[catKey] = arr.map(s =>
-              s && s.uuid === serviceUuid ? {...s, ...stats} : s,
-            );
-          });
-
-          inMemoryCache.set(cacheKey, {
-            ...after,
-            subServicesForService: newSubMap,
-            servicesForCategory: updatedServicesForCategory,
-            lastFetchedAt: Date.now(),
-          });
-
-          // update local services list (new array reference)
-          setServices(prev =>
-            Array.isArray(prev)
-              ? prev.map(s =>
-                  s && s.uuid === serviceUuid ? {...s, ...stats} : s,
-                )
-              : prev,
-          );
-
-          // force a small remount/repaint so virtualization picks up the change reliably
-          setListKey(k => k + 1);
-
-          // nudge layout
-          nudgeFlatListLayout();
-        };
-
-        if (Array.isArray(cachedList)) {
-          // cached path: apply stats first, then open modal after UI had chance to paint
-          setSubServices(Array.isArray(cachedList) ? [...cachedList] : []);
-          applyStatsToCacheAndState(cachedList);
-
-          InteractionManager.runAfterInteractions(() => {
-            setShowSubModal(true);
-          });
-          return;
-        }
-
-        // not cached — fetch then apply stats and open modal after paint
-        const subs = (await getSubServices(serviceUuid)) ?? [];
-        console.log('Fetched subservices', subs);
-        setSubServices(Array.isArray(subs) ? [...subs] : []);
-        applyStatsToCacheAndState(subs);
-
-        InteractionManager.runAfterInteractions(() => {
-          setShowSubModal(true);
-        });
-      } catch (err) {
-        console.log('Error fetching subservices', err);
-        // still attempt to show modal (empty)
-        setSubServices([]);
-        // bump listKey defensively
-        setListKey(k => k + 1);
-        nudgeFlatListLayout();
-        InteractionManager.runAfterInteractions(() => {
-          setShowSubModal(true);
-        });
-      } finally {
-        setSubServiceLoading(false);
-      }
-    },
-    [cacheKey, nudgeFlatListLayout],
-  );
-
-  // Called when user selects a subservice in the modal.
-  // Close modal first then navigate after dismiss/interaction finishes.
-  const handleSelectSubFromModal = useCallback(
-    serviceUuid => {
-      if (!serviceUuid) return;
-
-      // stash pending navigation info
-      pendingNavRef.current = {uuid: serviceUuid, isSub: true};
-
-      // close the modal first
-      setShowSubModal(false);
-
-      // For Android (and fallback), run after interactions and navigate if still pending.
-      InteractionManager.runAfterInteractions(() => {
-        const pending = pendingNavRef.current;
-        if (pending) {
-          openDateBook(pending.uuid, pending.isSub);
-          pendingNavRef.current = null;
-        }
-      });
-    },
-    [openDateBook],
-  );
-
-  // stable item renderer (no async inside)
-  const renderServiceItem = useCallback(
-    ({item}) => {
-      console.log('Rendering service item', item);
-      const isSub = !!item?.has_sub_services;
-      const durationText = isSub
-        ? item?.duration_avg.min != null && item?.duration_avg.max != null
-          ? `${item.duration_avg.min} - ${item.duration_avg.max} ${t('Mins')}`
-          : `${t('Mins')}`
-        : `${item?.duration ?? ''} ${t('Mins')}`;
-      const priceText = isSub
-        ? item?.price_avg.min != null && item?.price_avg.max != null
-          ? `${item.price_avg.min} - ${item.price_avg.max} QAR`
-          : ''
-        : item?.price != null
-        ? `${item.price} QAR`
-        : '';
-
-      return (
-        <TouchableOpacity
-          style={styles.serv}
-          activeOpacity={0.85}
-          onPress={() =>
-            isSub
-              ? handleOpenSubServices(item.uuid)
-              : openDateBook(item.uuid, false)
-          }>
-          <View style={styles.serviceInfoContainer}>
-            <View style={{flexDirection: 'row'}}>
-              <Text style={[styles.text]} numberOfLines={2}>
-                {isRTL ? item?.name_ar : item?.name}
-              </Text>
-            </View>
-            <Text style={[styles.title2, {flexDirection: 'row'}]}>
-              {durationText}
-            </Text>
-          </View>
-
-          <View style={styles.serviceActionContainer}>
-            <View style={{flexDirection: 'row'}}>
-              <Text style={styles.priceText}>{priceText}</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.selectButton, isSub ? styles.detailsButton : null]}
-              onPress={() =>
-                isSub
-                  ? handleOpenSubServices(item.uuid)
-                  : openDateBook(item.uuid, false)
-              }>
-              <Text style={styles.selectButtonText}>
-                {t(isSub ? 'Details' : 'Select')}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      );
-    },
-    [handleOpenSubServices, openDateBook, isRTL, t],
-  );
-
-  const keyExtractor = useCallback(
-    (item, index) => String(item?.uuid ?? item?.id ?? index),
-    [],
-  );
-
-  // skeleton placeholder while loading services
-  const ServiceSkeleton = () => {
-    const skeletons = new Array(6).fill(0);
-    return (
-      <View style={{paddingHorizontal: 14}}>
-        {skeletons.map((_, idx) => (
-          <View key={idx} style={styles.skeletonRow}>
-            <View style={styles.skeletonLeft} />
-            <View style={{flex: 1, marginLeft: 12}}>
-              <View style={styles.skeletonTitle} />
-              <View style={styles.skeletonMeta} />
-            </View>
-            <View style={styles.skeletonRight} />
-          </View>
-        ))}
-      </View>
-    );
   };
 
-  // List header (salon info + categories)
-  const ListHeader = useCallback(() => {
-    const logoSource =
-      salonDetails.images.logo &&
-      salonDetails.images.logo !==
-        'https://dashboard.ontimeqa.com/backend/assets/images/default-salon-logo.png' &&
-      salonDetails?.images?.logo !== '/storage/0'
-        ? {uri: `${hostImge}${salonDetails.images.logo}`}
-        : appLogo;
+  useEffect(() => {
+    const fetchSalonData = async () => {
+      try {
+        const data = await getSalons(salonId);
+        setSalonInfo(data);
+      } catch (error) {
+        console.log('Error fetching data:', error);
+      }
+    };
+
+    const fetchSubCat = async () => {
+      try {
+        const data = await getSubCategory(uuid, salonId);
+        setSubCat(data);
+        if (data && data.length > 0) {
+          setSelectedLocation(data[0].uuid);
+          fetchData(data[0].uuid);
+        } else {
+          setError(t('There is no services right now'));
+        }
+      } catch (error) {
+        console.log('Error fetching data:', error);
+      } finally {
+        setloading(false);
+      }
+    };
+
+    fetchSalonData();
+    fetchSubCat();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuth, salonId, uuid]);
+
+  const DateBook = serviceID => {
+    if (!isAuth) {
+      navigation.navigate('Auth');
+      setIsVisible(false);
+    } else {
+      navigation.navigate('DateBook', {salonId, serviceID, isSubService: 0});
+      setIsVisible(false);
+    }
+  };
+
+  const DateBook2 = serviceID => {
+    if (!isAuth) {
+      navigation.navigate('Auth');
+      setIsVisible(false);
+    } else {
+      navigation.navigate('DateBook', {salonId, serviceID, isSubService: 1});
+      setIsVisible(false);
+    }
+  };
+
+  const handleService = async uid => {
+    try {
+      const data = await getSubServices(uid);
+      if (data && Array.isArray(data)) {
+        const prices = data
+          .map(s => {
+            const p = parseFloat(s.price);
+            return Number.isFinite(p) ? p : null;
+          })
+          .filter(p => p != null);
+
+        const min_price = prices.length ? Math.min(...prices) : null;
+        const max_price = prices.length ? Math.max(...prices) : null;
+
+        setSalons(prev =>
+          prev.map(s => (s.uuid === uid ? {...s, min_price, max_price} : s)),
+        );
+
+        setSubService(data);
+        setIsVisible(true);
+      }
+    } catch (error) {
+      console.log('Error fetching data:', error);
+    } finally {
+      setloading(false);
+    }
+  };
+
+  const renderServiceItem = async ({item}) => {
+    const isSub = !!item?.has_sub_services;
+    let minPrice = null;
+    let maxPrice = null;
+    let minDuration = null;
+    let maxDuration = null;
+    if (isSub) {
+      const uid = item?.uuid;
+      const data = await getSubServices(uid);
+      if (data && Array.isArray(data)) {
+        const prices = data
+          .map(s => {
+            const p = parseFloat(s.price);
+            return Number.isFinite(p) ? p : null;
+          })
+          .filter(p => p != null);
+
+        minPrice = prices.length ? Math.min(...prices) : null;
+        maxPrice = prices.length ? Math.max(...prices) : null;
+        const durations = data
+          .map(s => {
+            const d = parseInt(s.duration, 10);
+            return Number.isFinite(d) ? d : null;
+          })
+          .filter(d => d != null);
+
+        minDuration = durations.length ? Math.min(...durations) : null;
+        maxDuration = durations.length ? Math.max(...durations) : null;
+      }
+    }
+    const singlePrice = item?.price;
 
     return (
-      <View>
-        <View style={styles.salonInfoContainer}>
-          <Image
-            source={logoSource}
-            style={styles.salonLogo}
-            resizeMode="cover"
-            accessibilityLabel={salonDetails?.name ?? 'Salon logo'}
-          />
-          <View style={styles.salonDetailsContainer}>
-            <View style={{flexDirection: 'row'}}>
-              <Text style={[styles.title]} numberOfLines={1}>
-                {isRTL ? salonDetails?.name_ar : salonDetails?.name}
-              </Text>
-            </View>
-            <View style={{flexDirection: 'row'}}>
-              <Text style={[styles.description]} numberOfLines={2}>
-                {isRTL
-                  ? salonDetails?.description_ar
-                  : salonDetails?.description}
-              </Text>
-            </View>
-            <View style={styles.locationContainer}>
-              <Ionicons name="location" size={14} color={Colors.primary} />
-              <Text style={[styles.locationText]} numberOfLines={1}>
-                {salonDetails?.location?.address}
-              </Text>
-            </View>
+      <TouchableOpacity
+        style={styles.serv}
+        onPress={() =>
+          isSub ? handleService(item.uuid) : DateBook(item.uuid)
+        }>
+        <View style={styles.serviceInfoContainer}>
+          <View style={styles.serviceTitleRow}>
+            <Text
+              style={[styles.text, {textAlign: isRTL ? 'right' : 'left'}]}
+              numberOfLines={1}>
+              {isRTL ? item?.name_ar : item?.name}
+            </Text>
+          </View>
+
+          <View style={styles.serviceMetaRow}>
+            <Text style={styles.title2}>
+              {isSub
+                ? `${minDuration} - ${maxDuration} ${'Mins'}`
+                : item?.duration + ' ' + t('Mins')}
+            </Text>
           </View>
         </View>
 
-        <View style={styles.separator} />
-
-        <View style={styles.categoriesWrap}>
-          <FlatList
-            data={categories}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={it => String(it.uuid)}
-            renderItem={({item}) => {
-              const active = selectedCategory === item.uuid;
-              return (
-                <TouchableOpacity
-                  style={[
-                    styles.filterItem,
-                    active ? styles.filterItemActive : null,
-                  ]}
-                  onPress={() => handleCategorySelect(item.uuid)}
-                  activeOpacity={0.85}>
-                  <Text
-                    style={[
-                      styles.filterItemText,
-                      {color: active ? '#fff' : Colors.black3},
-                    ]}>
-                    {isRTL ? item.name_ar : item.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            }}
-            contentContainerStyle={styles.filterListContainer}
-            initialNumToRender={6}
-            removeClippedSubviews={false}
-          />
+        <View style={styles.serviceActionContainer}>
+          {!isSub ? (
+            <Text style={styles.priceText}>
+              {singlePrice}{' '}
+              <Text style={{fontSize: 12}}>
+                {i18n.language === 'ar' ? 'QAR' : 'ر.ق'}
+              </Text>
+            </Text>
+          ) : (
+            <Text style={styles.priceText}>
+              {minPrice != null &&
+                maxPrice != null &&
+                `${minPrice} - ${maxPrice} ${
+                  i18n.language === 'ar' ? 'QAR' : 'ر.ق'
+                }`}
+            </Text>
+          )}
+          <TouchableOpacity
+            style={[styles.selectButton, isSub ? styles.detailsButton : null]}
+            onPress={() =>
+              isSub ? handleService(item.uuid) : DateBook(item.uuid)
+            }>
+            <Text style={styles.selectButtonText}>
+              {t(isSub ? 'Details' : 'Select')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+  const renderServiceItem2 = ({item}) => (
+    <View
+      style={[
+        styles.serv,
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingVertical: 10,
+          paddingHorizontal: 14,
+        },
+      ]}>
+      <View
+        style={{
+          flex: 1,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+        <View>
+          <Text style={styles.text}>
+            {i18n.language === 'ar' ? item?.name_ar : item?.name}
+          </Text>
+          <Text style={styles.title2}>
+            {item?.duration} {t('Mins')}
+          </Text>
+        </View>
+        <View
+          style={{
+            alignItems: 'flex-end',
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 8,
+          }}>
+          <Text
+            style={{fontWeight: '600', marginBottom: 8, color: Colors.text}}>
+            {item?.price}{' '}
+            <Text style={{fontSize: 12, color: Colors.text}}>
+              {i18n.language === 'ar' ? 'QAR' : 'ر.ق'}
+            </Text>
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.selectButton,
+              {paddingHorizontal: 14, borderRadius: 20},
+            ]}
+            onPress={() => DateBook2(item.uuid)}>
+            <Text style={styles.selectButtonText}>{t('Select')}</Text>
+          </TouchableOpacity>
         </View>
       </View>
-    );
-  }, [salonDetails, categories, selectedCategory, handleCategorySelect, isRTL]);
-
-  // Subservices modal row renderer
-  const renderSubServiceRow = useCallback(
-    ({item}) => {
-      return (
-        <View style={styles.subServRow}>
-          <View style={{flex: 1}}>
-            <View style={{flexDirection: 'row'}}>
-              <Text style={[styles.text]}>{item?.name}</Text>
-            </View>
-            <View style={{flexDirection: 'row'}}>
-              <Text style={[styles.title2]}>
-                {item?.duration} {t('Mins')}
-              </Text>
-            </View>
-          </View>
-          <View style={{alignItems: 'center', flexDirection: 'row'}}>
-            <Text style={styles.priceText}>
-              {item?.price} <Text style={{fontSize: 12}}>QAR</Text>
-            </Text>
-            <TouchableOpacity
-              style={styles.selectButtonSmall}
-              onPress={() => handleSelectSubFromModal(item.uuid)}>
-              <Text style={styles.selectButtonText}>{t('Select')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      );
-    },
-    [handleSelectSubFromModal, t],
+    </View>
   );
-
+  const logoSource =
+    SalonInfo?.images?.logo &&
+    SalonInfo?.images?.logo !==
+      'https://dashboard.ontimeqa.com/backend/assets/images/default-salon-logo.png' &&
+    SalonInfo?.images?.logo !== '/storage/0'
+      ? {uri: `${hostImge}${SalonInfo.images.logo}`}
+      : appLogo;
   return (
     <SafeAreaView
       style={[styles.safeArea, {writingDirection: isRTL ? 'rtl' : 'ltr'}]}>
       <StatusBar backgroundColor="#fff" barStyle="dark-content" />
-      <View
-        style={[styles.header, {paddingHorizontal: 20, paddingVertical: 12}]}>
+      <View style={[styles.header, {paddingHorizontal: 35, padding: 15}]}>
         <Ionicons
           name={isRTL ? 'arrow-forward' : 'arrow-back'}
-          size={24}
-          onPress={() => navigation.goBack()}
+          size={25}
+          onPress={handleGoBack}
         />
-        <Text style={styles.screenTitle}>{CatName ?? ''}</Text>
-        <View style={{width: 24}} />
       </View>
-
-      {loading ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-        </View>
-      ) : (
-        <FlatList
-          ref={flatRef}
-          key={String(listKey)}
-          data={Array.isArray(services) ? services : []}
-          extraData={[selectedCategory, services, listKey]}
-          renderItem={renderServiceItem}
-          keyExtractor={keyExtractor}
-          ListHeaderComponent={ListHeader}
-          ListHeaderComponentStyle={{paddingBottom: 12}}
-          contentContainerStyle={styles.contentContainer}
-          showsVerticalScrollIndicator={false}
-          initialNumToRender={8}
-          maxToRenderPerBatch={8}
-          windowSize={7}
-          removeClippedSubviews={false}
-          nestedScrollEnabled={Platform.OS === 'android'}
-          ListEmptyComponent={
-            categoryLoading ? (
-              <ServiceSkeleton />
-            ) : (
-              <Text style={styles.emptyText}>
-                {errorMsg || t('No services found')}
-              </Text>
-            )
-          }
-          ItemSeparatorComponent={() => <View style={{height: 8}} />}
-        />
-      )}
-
-      {/* DETAILS (subservices) modal — restyled bottom sheet */}
-      <Modal
-        visible={showSubModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => {
-          // Clear any pending nav if user dismisses
-          pendingNavRef.current = null;
-          setShowSubModal(false);
-        }}
-        onDismiss={() => {
-          // This fires on iOS when modal fully dismissed — perform pending navigation if any
-          const pending = pendingNavRef.current;
-          if (pending) {
-            openDateBook(pending.uuid, pending.isSub);
-            pendingNavRef.current = null;
-          }
-        }}>
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => {
-            pendingNavRef.current = null; // clear pending navigation if user taps outside to cancel
-            setShowSubModal(false);
-          }}>
-          <Pressable
-            style={styles.modalSheet}
-            onPress={e => e.stopPropagation()}>
-            {/* Handle */}
-            <View style={styles.sheetHandle} />
-
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('Details')}</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  pendingNavRef.current = null;
-                  setShowSubModal(false);
-                }}
-                hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
-                <Ionicons name="close-outline" size={22} />
-              </TouchableOpacity>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}>
+        {loading ? (
+          <ActivityIndicator
+            size="large"
+            style={{
+              alignItems: 'center',
+            }}
+            color={Colors.primary}
+          />
+        ) : (
+          <>
+            <View style={[styles.salonInfoContainer]}>
+              <Image
+                source={logoSource}
+                style={styles.salonLogo}
+                resizeMode="cover"
+              />
+              <View style={styles.salonDetailsContainer}>
+                <Text style={[styles.title]} numberOfLines={1}>
+                  {isRTL ? SalonInfo?.name_ar : SalonInfo?.name}
+                </Text>
+                <Text style={[styles.description]} numberOfLines={2}>
+                  {isRTL ? SalonInfo?.description_ar : SalonInfo?.description}
+                </Text>
+                <View style={[styles.locationContainer]}>
+                  <Ionicons name="location" size={15} color={Colors.primary} />
+                  <Text
+                    style={[
+                      styles.locationText,
+                      {
+                        textAlign: isRTL ? 'right' : 'left',
+                      },
+                    ]}
+                    numberOfLines={1}>
+                    {SalonInfo?.location?.address}
+                  </Text>
+                </View>
+              </View>
             </View>
 
-            {/* Body */}
-            {subServiceLoading ? (
-              <View style={styles.subLoadingWrap}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-              </View>
-            ) : subServices && subServices.length > 0 ? (
-              <FlatList
-                data={subServices}
-                renderItem={renderSubServiceRow}
-                keyExtractor={it => String(it.id)}
-                ItemSeparatorComponent={() => <View style={{height: 10}} />}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{paddingBottom: 28, paddingTop: 6}}
-                nestedScrollEnabled={false}
-                removeClippedSubviews={false}
-              />
-            ) : (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>
-                  {t('No details available')}
+            <View style={styles.serviceContainer}>
+              <Text
+                style={[
+                  styles.categoryTitle,
+                  {textAlign: isRTL ? 'right' : 'left'},
+                ]}>
+                {CatName}
+              </Text>
+              {Error ? (
+                <Text style={[styles.categoryTitle, {top: 15, fontSize: 16}]}>
+                  {Error}
                 </Text>
+              ) : (
+                <>
+                  <View>
+                    <FlatList
+                      nestedScrollEnabled
+                      data={subCat}
+                      renderItem={({item}) => (
+                        <TouchableOpacity
+                          style={[
+                            styles.filterItem,
+                            {
+                              backgroundColor:
+                                selectedLocation === item.uuid
+                                  ? Colors.primary
+                                  : 'white',
+                            },
+                          ]}
+                          onPressIn={async () => {
+                            setSelectedLocation(
+                              item.uuid === selectedLocation ? null : item.uuid,
+                            );
+                            await fetchData(item.uuid);
+                          }}
+                          activeOpacity={0.7}>
+                          <Text
+                            style={[
+                              styles.filterItemText,
+                              {
+                                color:
+                                  selectedLocation === item.uuid
+                                    ? 'white'
+                                    : Colors.black3,
+                                textAlign: isRTL ? 'right' : 'left',
+                              },
+                            ]}>
+                            {isRTL ? item.name_ar : item.name}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      keyExtractor={item => item.uuid}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.filterListContainer}
+                    />
+                  </View>
+
+                  <FlatList
+                    nestedScrollEnabled
+                    data={salonInfo}
+                    renderItem={renderServiceItem}
+                    keyExtractor={(item, index) =>
+                      item.id ? item.id.toString() : index.toString()
+                    }
+                    contentContainerStyle={styles.serviceListContainer}
+                  />
+                </>
+              )}
+            </View>
+          </>
+        )}
+        <Modal
+          animationType="slide"
+          transparent
+          visible={isVisible}
+          onRequestClose={() => setIsVisible(false)}>
+          <Pressable style={styles.modal} onPress={() => setIsVisible(false)}>
+            <Pressable style={styles.modal2}>
+              <View style={styles.modalHeader}>
+                <Text>{t('Details')}</Text>
+                <Ionicons
+                  name="close-outline"
+                  size={25}
+                  onPress={() => setIsVisible(false)}
+                />
               </View>
-            )}
+              <FlatList
+                data={subService}
+                renderItem={renderServiceItem2}
+                keyExtractor={item => item.id.toString()}
+                style={{marginBottom: 50}}
+              />
+            </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {flex: 1, backgroundColor: '#fff'},
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
+    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
+  },
+  container: {
+    backgroundColor: '#fff',
+    flex: 1,
+  },
   contentContainer: {
     paddingBottom: 30,
-    paddingHorizontal: 14,
+  },
+  notFoundContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: '#fff',
+  },
+  notFoundText: {
+    color: Colors.black3,
+    fontSize: 16,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  screenTitle: {fontWeight: '700', fontSize: 16, color: Colors.text},
-  loadingWrap: {
-    flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 24,
   },
-
   salonInfoContainer: {
     flexDirection: 'row',
-    marginTop: 10,
-    padding: 12,
+    marginTop: 15,
+    padding: 15,
+    flexWrap: 'wrap',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 8,
   },
   salonLogo: {
-    width: 76,
-    height: 76,
-    borderRadius: 10,
-    backgroundColor: Colors.border,
+    width: 75,
+    height: 75,
+    borderRadius: 36,
   },
-  salonDetailsContainer: {flex: 1, paddingLeft: 12, paddingRight: 6},
-  title: {fontSize: 18, fontWeight: '700', color: '#222'},
-  description: {fontSize: 13, color: '#7d8790', marginTop: 6},
-  locationContainer: {flexDirection: 'row', alignItems: 'center', marginTop: 8},
+  salonDetailsContainer: {
+    flex: 1,
+    paddingHorizontal: 15,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '700',
+
+    color: '#202020',
+  },
+  description: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
+    color: '#bdc0c5',
+    maxWidth: '90%',
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   locationText: {
     fontSize: 12,
+    fontWeight: '700',
     color: Colors.primary,
-    marginLeft: 6,
-    maxWidth: '78%',
+    marginLeft: 5,
+    maxWidth: '90%',
   },
-
-  separator: {
-    height: 1,
-    backgroundColor: Colors.border,
-    marginVertical: 12,
-    borderRadius: 4,
+  mapButton: {
+    minWidth: 100,
+    height: 32,
+    backgroundColor: '#000',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    marginTop: 10,
   },
-  categoriesWrap: {paddingBottom: 8},
-  filterListContainer: {paddingLeft: 6, paddingRight: 6},
+  mapButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  serviceContainer: {
+    marginTop: 30,
+    paddingHorizontal: 10,
+  },
+  categoryTitle: {
+    fontSize: 35,
+    color: Colors.text,
+    marginBottom: 15,
+    fontWeight: 'bold',
+    alignSelf: 'center',
+    textAlign: 'center',
+  },
+  filterListContainer: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
   filterItem: {
-    marginHorizontal: 6,
+    marginHorizontal: 5,
     height: 40,
     borderWidth: 1,
     borderRadius: 20,
-    paddingHorizontal: 14,
+    paddingHorizontal: 15,
     alignItems: 'center',
     justifyContent: 'center',
     borderColor: Colors.primary,
-    backgroundColor: '#fff',
   },
-  filterItemActive: {backgroundColor: Colors.primary},
-  filterItemText: {fontSize: 14, fontWeight: '500'},
-
+  filterItemText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  serviceListContainer: {
+    paddingTop: 15,
+  },
   serv: {
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    padding: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.black3 + '10',
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.black3 + '40',
   },
-  serviceInfoContainer: {flex: 1, paddingRight: 12},
-  serviceActionContainer: {flexDirection: 'row', alignItems: 'center'},
-  text: {color: Colors.text, fontSize: 16, fontWeight: '700'},
+  serviceInfoContainer: {
+    // flex: 1,
+    paddingRight: 10,
+  },
+  serviceActionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  text: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
   title2: {
     fontSize: 12,
-    color: '#9aa0a6',
-    marginTop: 6,
+    fontWeight: '500',
+    color: '#bdbdbd',
   },
   priceText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
+    marginRight: 15,
+    margin: 5,
     color: Colors.text,
-    marginRight: 10,
   },
   selectButton: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 15,
     paddingVertical: 8,
-    borderRadius: 18,
+    borderRadius: 20,
+    borderColor: '#818181',
     borderWidth: 1,
-    borderColor: '#8b8b8b',
-    backgroundColor: '#fff',
-  },
-  detailsButton: {
-    borderColor: Colors.primary,
-    backgroundColor: 'rgba(0,0,0,0.02)',
-  },
-  selectButtonText: {fontSize: 12, fontWeight: '700', color: '#4b5563'},
-
-  selectButtonSmall: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#8b8b8b',
-    backgroundColor: '#fff',
-    marginTop: 6,
-  },
-
-  emptyText: {textAlign: 'center', marginTop: 20, color: '#8b8b8b'},
-
-  // skeleton styles
-  skeletonRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    justifyContent: 'center',
   },
-  skeletonLeft: {
-    width: 56,
-    height: 56,
-    borderRadius: 10,
-    backgroundColor: '#eee',
+  selectButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#818181',
   },
-  skeletonTitle: {
-    width: '60%',
-    height: 14,
-    borderRadius: 6,
-    backgroundColor: '#eee',
-    marginBottom: 8,
-  },
-  skeletonMeta: {
-    width: '40%',
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#f2f2f2',
-  },
-  skeletonRight: {
-    width: 64,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#eee',
-    marginLeft: 12,
-  },
-
-  // modal (bottom sheet)
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    width: '100%',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    backgroundColor: '#fff',
-    paddingTop: 10,
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    maxHeight: '80%',
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 4,
-    backgroundColor: '#e6e6e6',
-    alignSelf: 'center',
-    marginBottom: 10,
-  },
+  // modalOverlay: {
+  //   flex: 1,
+  //   backgroundColor: 'rgba(0,0,0,0.5)',
+  //   justifyContent: 'flex-end',
+  // },
+  // modalContent: {
+  //   backgroundColor: '#fff',
+  //   borderTopLeftRadius: 30,
+  //   borderTopRightRadius: 30,
+  //   padding: 20,
+  // },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
-  },
-  modalTitle: {fontWeight: '700', fontSize: 16},
-
-  subServRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
+    paddingBottom: 15,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: '#f0f0f0',
+    marginBottom: 10,
+    marginHorizontal: 15,
   },
-
-  subLoadingWrap: {paddingVertical: 24, alignItems: 'center'},
-  emptyState: {paddingVertical: 24, alignItems: 'center'},
+  // modalHeaderTitle: {
+  //   fontSize: 18,
+  //   fontWeight: '600',
+  // },
+  modalListContainer: {
+    paddingVertical: 10,
+  },
+  bookButton: {
+    height: 55,
+    backgroundColor: Colors.primary,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    marginHorizontal: 20,
+  },
+  bookButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  authModalOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  authModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    padding: 25,
+    width: '80%',
+    maxWidth: 300,
+    alignItems: 'center',
+  },
+  authModalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 25,
+  },
+  loginButton: {
+    width: 120,
+    height: 45,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loginButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 15,
+    padding: 25,
+    width: '80%',
+    maxWidth: 300,
+    alignItems: 'center',
+  },
+  modalHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 15,
+  },
+  optionButton: {
+    paddingVertical: 10,
+    width: '100%',
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
+    alignItems: 'center',
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  cancelButton: {
+    marginTop: 20,
+    paddingVertical: 10,
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    alignItems: 'center',
+    width: '100%',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#fff',
+  },
+  modal: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modal2: {
+    width: '100%',
+    borderTopLeftRadius: 50,
+    borderTopRightRadius: 50,
+    backgroundColor: '#fff',
+    padding: 15,
+    minHeight: 200,
+  },
+  button: {
+    width: 280,
+    height: 60,
+    backgroundColor: Colors.primary,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginTop: 25,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  buttonText: {
+    fontSize: 18,
+    color: '#fff',
+  },
+  // modalHeader: {
+  //   padding: 10,
+  //   marginBottom: 15,
+  // },
+  modalContainer: {
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    position: 'absolute',
+    height: 900,
+    width: '100%',
+  },
 });
 
 export default Service;

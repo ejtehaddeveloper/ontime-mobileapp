@@ -103,6 +103,8 @@ const DateBook = ({route}) => {
 
   const [timeSlots, setTimeSlots] = useState([]); // only available slots
   const [loadTime, setLoadTime] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+
   const [errorT, setErrorT] = useState('');
 
   // other UI / modal states

@@ -18,7 +18,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useRef} from 'react';
 import {Easing} from 'react-native-reanimated';
 
-
 const {width} = Dimensions.get('window');
 
 const scale = width / 375;
@@ -27,35 +26,31 @@ const normalize = size => {
   return Math.round(scale * size);
 };
 
-
 const Splash2 = () => {
   const [pause, setPause] = useState(false);
   const videoRef = useRef(null);
-  
-   const opacity = useRef(new Animated.Value(1)).current;
+
+  const opacity = useRef(new Animated.Value(1)).current;
   const [key, setKey] = useState(0); // Force remount video for clean restart
 
   const handleEnd = () => {
-     Animated.timing(opacity, {
-    toValue: 0,
-    duration: 150,
-    easing: Easing.in(Easing.quad),
-    useNativeDriver: true,
-  }).start(() => {
-    if (videoRef.current) {
-      videoRef.current.seek(0); // restart the video without remounting
-    }
     Animated.timing(opacity, {
-      toValue: 1,
+      toValue: 0,
       duration: 150,
-      easing: Easing.in(Easing.ease),
+      easing: Easing.in(Easing.quad),
       useNativeDriver: true,
-    }).start();
-  });
+    }).start(() => {
+      if (videoRef.current) {
+        videoRef.current.seek(0); // restart the video without remounting
+      }
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 150,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    });
   };
-
-
- 
 
   const navigation = useNavigation();
 
@@ -74,36 +69,35 @@ const Splash2 = () => {
     }
   };
 
-
   const {t} = useTranslation();
   return (
     <View style={styles.container}>
-       <Animated.View style={{ opacity, flex: 1 }}>
-      <StatusBar hidden={true} />
-      <Video
-        repeat={true}
-        source={require('../assets/video/welcome-1.mp4')} //
-        style={styles.backgroundVideo}
-        controls={false}
-        resizeMode="cover"
-        // onEnd={handleEnd}
-        paused={pause}
-        // ref={videoRef}
-        key={key} // Force remount on end
-      />
-      <SafeAreaView style={styles.body}>
-        <View style={styles.contentSection}>
-          <Text style={styles.welcomeText}>{t('Welcome to On Time')}</Text>
-          <Text style={styles.descriptionText}>
-            {t('We`re here to make scheduling your services quick and easy')}
-          </Text>
-          <TouchableOpacity
-            style={styles.getStartedButton}
-            onPress={handleLogin}>
-            <Text style={styles.getStartedText}>{t('Get Started')}</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <Animated.View style={{opacity, flex: 1}}>
+        <StatusBar hidden={true} />
+        <Video
+          repeat={true}
+          source={require('../assets/video/welcome-1.mp4')} //
+          style={styles.backgroundVideo}
+          controls={false}
+          resizeMode="cover"
+          // onEnd={handleEnd}
+          paused={pause}
+          // ref={videoRef}
+          key={key} // Force remount on end
+        />
+        <SafeAreaView style={styles.body}>
+          <View style={styles.contentSection}>
+            <Text style={styles.welcomeText}>{t('Welcome to On Time')}</Text>
+            <Text style={styles.descriptionText}>
+              {t('We`re here to make scheduling your services quick and easy')}
+            </Text>
+            <TouchableOpacity
+              style={styles.getStartedButton}
+              onPress={handleLogin}>
+              <Text style={styles.getStartedText}>{t('Get Started')}</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
       </Animated.View>
     </View>
   );

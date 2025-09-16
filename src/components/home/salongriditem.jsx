@@ -8,7 +8,7 @@ import buildImageUri from '../../helpers/buildimageuri';
 
 const SalonGridItem = ({item, size = 100, onPress, isRTL = false}) => {
   console.log('Rendering SalonGridItem', item);
-  const appLogo = require('../../assets/images/logo22.jpg');
+  const appLogo = require('../../assets/images/logoem.png');
   //data normalization
   const isSalon = (!item?.images?.logo || !item?.name) && !!item?.salon;
   const data = isSalon ? item.salon : item;

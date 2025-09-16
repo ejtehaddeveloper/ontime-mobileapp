@@ -103,5 +103,14 @@
   "completed": "مكتمل",
   "pending": "قيد الانتظار",
   "More": "المزيد",
-  "Confirming": "جارٍ التأكيد"
+  "Confirming": "جارٍ التأكيد",
+  "Call": "اتصال",
+  "Pending": "قيد الانتظار",
+  "Rescheduled": "تم إعادة الجدولة",
+  "Cancelled": "ملغى",
+  "Confirmed": "مؤكد",
+  "Completed": "مكتمل",
+  "Confirmation": "تأكيد الاتصال",
+  "Are you sure you want to call?": "هل أنت متأكد أنك تريد الاتصال؟",
+  "rescheduled": "تم إعادة الجدولة"
 }

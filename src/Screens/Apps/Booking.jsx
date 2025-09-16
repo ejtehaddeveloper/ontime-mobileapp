@@ -41,7 +41,7 @@ import {t} from 'i18next';
 
 const DEBUG = false;
 const MAX_PREFETCH = 5;
-const appLogo = require('../../assets/images/logo22.jpg');
+const appLogo = require('../../assets/images/logoem.png');
 
 const TABS = [
   {
@@ -485,9 +485,7 @@ const StatusBadge = ({status}) => {
   const s = map[status] || {label: status || '', color: Colors.primary};
   return (
     <View style={[styles.badge, {backgroundColor: s.color}]}>
-      <Text style={styles.badgeText}>
-        {i18n.language === 'ar' ? s.label : s.label}
-      </Text>
+      <Text style={styles.badgeText}>{t(s.label)}</Text>
     </View>
   );
 };
@@ -499,7 +497,7 @@ const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
     logoUrl !==
       'https://dashboard.ontimeqa.com/backend/assets/images/1300x300.png';
   const logoUri = hasLogo ? {uri: logoUrl, cache: 'force-cache'} : appLogo;
-
+  console.log(item);
   return (
     <TouchableOpacity
       style={styles.card}
@@ -516,7 +514,9 @@ const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
           </Text>
         </View>
         <View style={styles.rowSmall}>
-          <Text style={styles.muted}>{formatTime(item?.start_time)}</Text>
+          <Text style={styles.muted}>
+            {formatTime(item?.start_time, i18n.language)}
+          </Text>
           <Text style={styles.muted}> • </Text>
           <Text style={styles.muted}>{formatDate(item?.date)}</Text>
         </View>
@@ -533,11 +533,12 @@ const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
   );
 });
 
-function formatTimeTo12Hour(time24) {
+function formatTimeTo12Hour(time24, lang = 'en') {
   if (!time24) {
     return '';
   }
-  const [hrs, mins] = time24.split(':');
+
+  const [hrs, mins] = String(time24).split(':');
   let hour = parseInt(hrs, 10);
   const ampm = hour >= 12 ? 'PM' : 'AM';
   hour = hour % 12;
@@ -546,19 +547,31 @@ function formatTimeTo12Hour(time24) {
   }
   return `${hour}:${mins} ${ampm}`;
 }
+
 function formatDateShort(dateString) {
   if (!dateString) {
     return '';
   }
+
+  const date = new Date(dateString);
+  const options = {weekday: 'long', day: 'numeric', month: 'short'};
+
   try {
-    const date = new Date(dateString);
-    const options = {weekday: 'short', day: 'numeric', month: 'short'};
-    return new Intl.DateTimeFormat(
-      i18n.language === 'ar' ? 'ar-EG' : 'en-US',
-      options,
-    ).format(date);
+    if (i18n.language === 'ar') {
+      const formatter = new Intl.DateTimeFormat('ar-EG', options);
+      const formatted = formatter.format(date);
+
+      // convert Arabic digits back to English
+      const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+      const toEnglishDigits = s =>
+        s.replace(/[٠-٩]/g, d => arabicDigits.indexOf(d));
+
+      return toEnglishDigits(formatted);
+    } else {
+      return new Intl.DateTimeFormat('en-US', options).format(date);
+    }
   } catch (e) {
-    return dateString;
+    return date.toDateString();
   }
 }
 

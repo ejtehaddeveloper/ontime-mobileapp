@@ -297,7 +297,7 @@ function useSalonDataWithCache(salonId, isAuth) {
 
 // --- Main screen
 const SalonScreen = ({route}) => {
-  const appLogo = require('../../assets/images/logo.jpg');
+  const appLogo = require('../../assets/images/logoem.png');
   const {salonId} = route.params;
   const {width} = useWindowDimensions();
   const isRTL = i18n.language === 'ar';
@@ -340,13 +340,14 @@ const SalonScreen = ({route}) => {
       Linking.openURL(`tel:${salon.contact_info.phone}`);
     }
   };
-  const openAddressMap = async (
-    lat = salon?.address?.lat,
-    lng = salon?.address?.lng,
-    label = salon?.address?.label,
-  ) => {
-    console.log('salon data location: ', salon);
-    console.log('salon date for id:', salonId);
+  const openAddressMap = async (lat, lng, label) => {
+    lat = salon?.location?.lat;
+    lng = salon?.location?.lng;
+    label = salon?.location?.address;
+    console.log('lat: ', lat);
+    console.log('lng: ', lng);
+    console.log('label: ', label);
+
     try {
       if (Platform.OS === 'android') {
         // Android → system intent chooser (Google Maps, Waze, Bing, etc.)
@@ -541,7 +542,7 @@ const SalonScreen = ({route}) => {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.mapButton, styles.callButton]}
-                  onPress={makeCall}>
+                  onPress={Platform.OS === 'ios' ? confirmCall : makeCall}>
                   <Text style={[styles.mapButtonText, styles.callButtonText]}>
                     {t('Call')}
                   </Text>
@@ -732,11 +733,11 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     marginTop: 10,
     padding: 15,
-    gap: 30,
+    gap: 15,
     alignItems: 'flex-start',
     position: 'relative',
   },
-  salonLogo: {width: 75, height: 85, borderRadius: 10},
+  salonLogo: {width: 75, height: 75, borderRadius: 35},
   logoPlaceholder: {backgroundColor: Colors.border},
   salonDetails: {flex: 1},
   title: {
@@ -763,7 +764,7 @@ const styles = StyleSheet.create({
   mapButtonContainer: {flexDirection: 'row', gap: 10},
   mapButton: {
     minWidth: 113,
-    height: 35,
+    height: 30,
     backgroundColor: '#000',
     borderRadius: 12,
     alignItems: 'center',

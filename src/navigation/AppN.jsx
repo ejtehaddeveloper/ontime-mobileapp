@@ -25,7 +25,6 @@ import {GetNotifications} from '../context/api';
 import {AuthContext} from '../context/AuthContext';
 import {t} from 'i18next';
 import i18n from '../assets/locales/i18';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -58,22 +57,14 @@ function MainTabNavigator() {
     }
   }, [isAuth]);
 
-  // Get bottom safe area inset using react-native-safe-area-context
-  const insets = useSafeAreaInsets();
-  console.log('Bottom inset:', insets.bottom);
-  useEffect(() => {
-    console.log('Current language:', i18n.language);
-    console.log('Bottom inset changed:', insets.bottom);
-  }, [insets.bottom]);
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
           backgroundColor: '#fff',
-          height: Platform.OS === 'ios' ? 80 : 60,
-          paddingVertical: insets.bottom + 25,
-          paddingHorizontal: Platform.OS === 'ios' ? 15 : 5,
+          height: 60,
+          paddingHorizontal: Platform.OS === 'ios' ? 29 : 15,
         },
       }}>
       {[
@@ -123,13 +114,13 @@ function MainTabNavigator() {
                     position: 'absolute',
                     right: -5,
                     top: -2,
+                    backgroundColor: 'red',
                     minWidth: 14,
                     height: 14,
                     borderRadius: 7,
                     justifyContent: 'center',
                     alignItems: 'center',
                     paddingHorizontal: 2,
-                    backgroundColor: 'red',
                   }}>
                   <Text
                     style={{color: 'white', fontSize: 10, fontWeight: 'bold'}}>
@@ -183,27 +174,23 @@ function MainTabNavigator() {
   );
 }
 
-import {SafeAreaProvider} from 'react-native-safe-area-context';
-
 const AppN = () => {
   return (
-    <SafeAreaProvider>
-      <Stack.Navigator screenOptions={{headerShown: false}}>
-        <Stack.Screen name="MainTab" component={MainTabNavigator} />
-        {[
-          {name: 'Salon', component: Salon},
-          {name: 'Service', component: Service},
-          {name: 'DateBook', component: DateBook},
-          {name: 'BookingDetails', component: BookingDetails},
-          {name: 'Cart', component: Cart},
-          {name: 'View_all', component: View_all},
-          {name: 'View_all2', component: View_all2},
-          {name: 'ChangeAppointment', component: ChangeAppointment},
-        ].map(({name, component}) => (
-          <Stack.Screen key={name} name={name} component={component} />
-        ))}
-      </Stack.Navigator>
-    </SafeAreaProvider>
+    <Stack.Navigator screenOptions={{headerShown: false}}>
+      <Stack.Screen name="MainTab" component={MainTabNavigator} />
+      {[
+        {name: 'Salon', component: Salon},
+        {name: 'Service', component: Service},
+        {name: 'DateBook', component: DateBook},
+        {name: 'BookingDetails', component: BookingDetails},
+        {name: 'Cart', component: Cart},
+        {name: 'View_all', component: View_all},
+        {name: 'View_all2', component: View_all2},
+        {name: 'ChangeAppointment', component: ChangeAppointment},
+      ].map(({name, component}) => (
+        <Stack.Screen key={name} name={name} component={component} />
+      ))}
+    </Stack.Navigator>
   );
 };
 

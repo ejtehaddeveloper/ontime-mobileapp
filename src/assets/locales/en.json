@@ -90,5 +90,10 @@
   "Mins": "Mins",
   "cancelled": "Cancelled",
   "completed": "Completed",
-  "pending": "Pending"
+  "pending": "Pending",
+  "Call": "Call",
+  "Pending": "Pending",
+  "Rescheduled": "Rescheduled",
+  "Cancelled": "Cancelled",
+  "Confirmed": "Confirmed"
 }

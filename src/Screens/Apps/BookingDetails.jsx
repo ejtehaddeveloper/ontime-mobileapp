@@ -1,3 +1,4 @@
+/* eslint-disable no-catch-shadow */
 /* eslint-disable react-native/no-inline-styles */
 /*
   Refactored BookingDetails screen
@@ -32,7 +33,7 @@ import {t} from 'i18next';
 import i18n from '../../assets/locales/i18';
 
 // ---------- helpers (stable references, no recreations)
-function formatTimeTo12Hour(time24) {
+function formatTimeTo12Hour(time24, lang = 'en') {
   if (!time24) {
     return '';
   }
@@ -50,13 +51,24 @@ function formatDateShort(dateString) {
   if (!dateString) {
     return '';
   }
+
   const date = new Date(dateString);
   const options = {weekday: 'long', day: 'numeric', month: 'short'};
+
   try {
-    return new Intl.DateTimeFormat(
-      i18n.language === 'ar' ? 'ar-EG' : 'en-US',
-      options,
-    ).format(date);
+    if (i18n.language === 'ar') {
+      const formatter = new Intl.DateTimeFormat('ar-EG', options);
+      const formatted = formatter.format(date);
+
+      // convert Arabic digits back to English
+      const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+      const toEnglishDigits = s =>
+        s.replace(/[٠-٩]/g, d => arabicDigits.indexOf(d));
+
+      return toEnglishDigits(formatted);
+    } else {
+      return new Intl.DateTimeFormat('en-US', options).format(date);
+    }
   } catch (e) {
     return date.toDateString();
   }
@@ -69,7 +81,9 @@ function safePriceDisplay(priceStr) {
   // If price is like "100.000" or "100000" or includes decimals, try to show the integer part
   const cleaned = String(priceStr).replace(/[^0-9.]/g, '');
   const parts = cleaned.split('.');
-  return parts[0] ? `${parts[0]} QAR` : `${cleaned} QAR`;
+  return parts[0]
+    ? `${parts[0]} ${i18n.language === 'ar' ? 'QAR' : 'ر.ق'}`
+    : `${cleaned} ${i18n.language === 'ar' ? 'QAR' : 'ر.ق'}`;
 }
 
 // ---------- data hook
@@ -123,7 +137,7 @@ const Header = React.memo(({onBack, title, statusLabel, isRTL}) => (
     <Text style={styles.headerTitle}>{title}</Text>
     {statusLabel ? (
       <View style={{borderRadius: 12}}>
-        <Text style={styles.headerStatus}>{statusLabel}</Text>
+        <Text style={styles.headerStatus}>{t(statusLabel)}</Text>
       </View>
     ) : (
       <View style={{width: 22}} />
@@ -200,16 +214,61 @@ const BookingDetails = ({route}) => {
 
   const handleGoBack = useCallback(() => navigation.goBack(), [navigation]);
 
-  const openMap = useCallback(() => {
-    const address = salon?.salon?.location?.address;
-    if (!address) {
-      return;
+  const openAddressMap = async (lat, lng, label) => {
+    console.log(salon);
+    lat = salon?.salon?.location?.lat;
+    lng = salon?.salon?.location?.lng;
+    label = salon?.salon?.location?.address;
+
+    try {
+      if (Platform.OS === 'android') {
+        // Android → system intent chooser (Google Maps, Waze, Bing, etc.)
+        const url = `geo:${lat},${lng}?q=${lat},${lng}(${label})`;
+        const supported = await Linking.canOpenURL(url);
+        if (supported) {
+          await Linking.openURL(url);
+        } else {
+          // fallback to Google Maps web if no map app available
+          await Linking.openURL(
+            `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+          );
+        }
+      } else {
+        // iOS → open Apple Maps by default
+        const appleUrl = `http://maps.apple.com/?ll=${lat},${lng}&q=${label}`;
+        const googleUrl = `comgooglemaps://?q=${lat},${lng}`;
+        const wazeUrl = `waze://?ll=${lat},${lng}&navigate=yes`;
+
+        // Try Apple Maps first
+        const supportedApple = await Linking.canOpenURL(appleUrl);
+        if (supportedApple) {
+          await Linking.openURL(appleUrl);
+          return;
+        }
+
+        // Try Google Maps if installed
+        const supportedGoogle = await Linking.canOpenURL(googleUrl);
+        if (supportedGoogle) {
+          await Linking.openURL(googleUrl);
+          return;
+        }
+
+        // Try Waze if installed
+        const supportedWaze = await Linking.canOpenURL(wazeUrl);
+        if (supportedWaze) {
+          await Linking.openURL(wazeUrl);
+          return;
+        }
+
+        // fallback → open Google Maps in Safari
+        await Linking.openURL(
+          `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+        );
+      }
+    } catch (er) {
+      console.error('Error opening map:', er);
     }
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-      address,
-    )}`;
-    Linking.openURL(url).catch(err => console.log('maps open error', err));
-  }, [salon]);
+  };
 
   const confirmCancel = useCallback(async () => {
     setCancelling(true);
@@ -279,7 +338,6 @@ const BookingDetails = ({route}) => {
       </SafeAreaView>
     );
   }
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -328,7 +386,7 @@ const BookingDetails = ({route}) => {
 
               <TouchableOpacity
                 style={styles.mapButton}
-                onPress={openMap}
+                onPress={openAddressMap}
                 accessibilityRole="button">
                 <Ionicons name="location" size={15} color={'#fff'} />
                 <Text style={styles.title3}>{t('Google Map')}</Text>
@@ -431,23 +489,24 @@ const styles = StyleSheet.create({
   date: {fontSize: 17, fontWeight: '600', color: 'rgba(0, 0, 0, 0.8)'},
   time: {fontSize: 13, fontWeight: '500', color: Colors.black3},
   intoList: {
-    paddingLeft: 6,
+    paddingHorizontal: 6,
     marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    minHeight: 25,
   },
   stylist: {fontSize: 15, fontWeight: '600', color: Colors.black3},
   stylelistName: {fontSize: 15, color: Colors.black1},
   mapButton: {
-    width: 120,
-    height: 36,
+    width: 113,
+    height: 27,
     backgroundColor: '#000',
     borderRadius: 12,
     alignSelf: 'flex-end',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginBottom: 20,
     flexDirection: 'row',
   },
   title3: {fontSize: 12, color: '#fff', marginLeft: 6},
@@ -460,11 +519,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 10,
     alignItems: 'center',
-    margin: 8,
+    alignSelf: 'center',
+    marginTop: 20,
+    margin: 10,
     width: 150,
   },
-  cancelButton: {backgroundColor: Colors.primary, borderColor: Colors.primary},
-  buttonText: {fontSize: 13, fontWeight: '500', color: '#C5AA96'},
+  cancelButton: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#C5AA96',
+  },
   modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.2)',
