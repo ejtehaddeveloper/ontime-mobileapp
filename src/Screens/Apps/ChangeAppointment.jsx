@@ -98,6 +98,10 @@ const ChangeBook = ({route}) => {
   const [loadTime, setLoadTime] = useState(false);
   const [errorT, setErrorT] = useState('');
 
+  // pagination state for pages of times
+  const [currentPage, setCurrentPage] = useState(0);
+  const currentPageRef = useRef(0);
+
   // other UI / modal states
   const [loading, setLoading] = useState(true);
   const [isVisibleMsg, setIsVisibleMsg] = useState(false);
@@ -317,6 +321,50 @@ const ChangeBook = ({route}) => {
     }
     return p;
   }, [timeSlots]);
+
+  // ensure currentPage is valid when pages change
+  useEffect(() => {
+    if (!pages || pages.length === 0) {
+      setCurrentPage(0);
+      currentPageRef.current = 0;
+      return;
+    }
+    if (currentPage >= pages.length) {
+      setCurrentPage(0);
+      currentPageRef.current = 0;
+    }
+  }, [pages.length, currentPage]);
+
+  // keep ref in sync
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  // onScroll handler — update current page immediately while scrolling
+  const onPagesScroll = useCallback(
+    e => {
+      if (!pages || pages.length === 0) return;
+      const offsetX = e.nativeEvent.contentOffset.x || 0;
+      const idx = Math.round(offsetX / (containerWidth || 1));
+      const pageIndex = Math.max(0, Math.min(idx, pages.length - 1));
+      if (pageIndex !== currentPageRef.current) {
+        setCurrentPage(pageIndex);
+        currentPageRef.current = pageIndex;
+      }
+    },
+    [containerWidth, pages.length],
+  );
+
+  const onPagesMomentumEnd = useCallback(
+    e => {
+      const offsetX = e.nativeEvent.contentOffset.x || 0;
+      const idx = Math.round(offsetX / (containerWidth || 1));
+      const pageIndex = Math.max(0, Math.min(idx, pages.length - 1));
+      setCurrentPage(pageIndex);
+      currentPageRef.current = pageIndex;
+    },
+    [containerWidth, pages.length],
+  );
 
   // employee row
   const renderEmployeeRow = useCallback(
@@ -679,7 +727,33 @@ const ChangeBook = ({route}) => {
                   extraData={[pages, selectedDate]}
                   removeClippedSubviews={false}
                   initialNumToRender={2}
+                  // immediate updates while user swipes:
+                  onScroll={onPagesScroll}
+                  scrollEventThrottle={16}
+                  onMomentumScrollEnd={onPagesMomentumEnd}
                 />
+              )}
+
+              {/* pagination dots (only show when more than 1 page) */}
+              {pages && pages.length > 1 && (
+                <View
+                  style={[
+                    styles.timePaginationContainer,
+                    {
+                      flexDirection:
+                        i18n.language === 'ar' ? 'row-reverse' : 'row',
+                    },
+                  ]}>
+                  {pages.map((_, i) => (
+                    <View
+                      key={`dot-${i}`}
+                      style={[
+                        styles.timePageDot,
+                        i === currentPage && styles.timePageDotActive,
+                      ]}
+                    />
+                  ))}
+                </View>
               )}
 
               {/* bottom actions */}
@@ -1012,6 +1086,26 @@ const styles = StyleSheet.create({
   },
   modalTitle: {fontSize: 16, fontWeight: '600'},
   contentContainer: {paddingBottom: 30},
+
+  // pagination styles for time pages
+  timePaginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 6, // RN 0.71+ supports gap, if older RN remove and rely on marginHorizontal on dot
+  },
+  timePageDot: {
+    width: 10,
+    height: 6,
+    borderRadius: 4,
+    backgroundColor: Colors.border,
+    marginHorizontal: 4,
+  },
+  timePageDotActive: {
+    width: 18,
+    backgroundColor: Colors.primary,
+  },
 });
 
 export default ChangeBook;
