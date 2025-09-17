@@ -34,7 +34,7 @@ import {CommonActions, useNavigation} from '@react-navigation/native';
 import {Checkout, deleteCart, getCart} from '../../context/api';
 import Loading from '../../assets/common/Loading';
 import i18n from '../../assets/locales/i18';
-import {screenHeight, screenWidth} from '../../assets/constants/ScreenSize';
+import {screenHeight} from '../../assets/constants/ScreenSize';
 import {t} from 'i18next';
 
 const {width} = Dimensions.get('window');

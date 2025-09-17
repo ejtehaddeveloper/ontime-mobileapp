@@ -104,6 +104,8 @@ const DateBook = ({route}) => {
   const [timeSlots, setTimeSlots] = useState([]); // only available slots
   const [loadTime, setLoadTime] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
+  // ref to hold last current page to avoid extra renders from onScroll closure
+  const currentPageRef = useRef(0);
 
   const [errorT, setErrorT] = useState('');
 
@@ -330,6 +332,39 @@ const DateBook = ({route}) => {
     }
     return p;
   }, [timeSlots]);
+
+  // ensure currentPage is valid when pages change
+  useEffect(() => {
+    if (!pages || pages.length === 0) {
+      setCurrentPage(0);
+      currentPageRef.current = 0;
+      return;
+    }
+    if (currentPage >= pages.length) {
+      setCurrentPage(0);
+      currentPageRef.current = 0;
+    }
+  }, [pages.length, currentPage]);
+
+  // keep ref in sync
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  // onScroll handler — update current page immediately while scrolling
+  const onPagesScroll = useCallback(
+    e => {
+      if (!pages || pages.length === 0) return;
+      const offsetX = e.nativeEvent.contentOffset.x || 0;
+      const idx = Math.round(offsetX / (containerWidth || 1));
+      const pageIndex = Math.max(0, Math.min(idx, pages.length - 1));
+      if (pageIndex !== currentPageRef.current) {
+        setCurrentPage(pageIndex);
+        currentPageRef.current = pageIndex;
+      }
+    },
+    [containerWidth, pages.length],
+  );
 
   // deleting item
   const delete_item = useCallback(async id => {
@@ -851,7 +886,7 @@ const DateBook = ({route}) => {
                   pagingEnabled
                   showsHorizontalScrollIndicator={false}
                   keyExtractor={(p, idx) => `page-${idx}`}
-                  renderItem={({item: page}) => (
+                  renderItem={({item: page, index}) => (
                     <View
                       style={[
                         styles.pageContainer,
@@ -866,9 +901,33 @@ const DateBook = ({route}) => {
                   extraData={[pages, selectedDate]}
                   removeClippedSubviews={false}
                   initialNumToRender={2}
+                  // immediate updates while user swipes:
+                  onScroll={onPagesScroll}
+                  scrollEventThrottle={16}
                 />
               )}
-
+              {/* <-- RTL-aware pagination (only this area changed) --> */}
+              {pages && pages.length > 1 && (
+                <View
+                  style={[
+                    styles.timePaginationContainer,
+                    // reverse dot order visually for Arabic (RTL)
+                    {
+                      flexDirection:
+                        i18n.language === 'ar' ? 'row-reverse' : 'row',
+                    },
+                  ]}>
+                  {pages.map((_, i) => (
+                    <View
+                      key={`dot-${i}`}
+                      style={[
+                        styles.timePageDot,
+                        i === currentPage && styles.timePageDotActive,
+                      ]}
+                    />
+                  ))}
+                </View>
+              )}
               {/* bottom actions */}
               <View style={{paddingHorizontal: 12, marginTop: 20}}>
                 <Text style={[styles.smallText, {textAlign: 'center'}]}>
@@ -1118,11 +1177,7 @@ const DateBook = ({route}) => {
                           <View style={{flexDirection: 'row'}}>
                             <Text style={{marginRight: 15}}>
                               {String(item?.service?.price).slice(0, -3)}{' '}
-                              <View style={{flexDirection: 'row'}}>
-                                <Text style={{fontSize: 12}}>
-                                  {i18n.language === 'ar' ? 'ر.ق' : 'QAR'}
-                                </Text>
-                              </View>
+                              {i18n.language === 'ar' ? 'ر.ق' : 'QAR'}
                             </Text>
                           </View>
                           <View style={{flexDirection: 'row'}}>
@@ -1382,6 +1437,24 @@ const styles = StyleSheet.create({
   },
   buttonText: {color: '#fff', fontWeight: '700'},
   contentContainer: {paddingBottom: 30},
+  timePaginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 6, // RN 0.71+ supports gap, if older RN remove and rely on marginHorizontal on dot
+  },
+  timePageDot: {
+    width: 10,
+    height: 6,
+    borderRadius: 4,
+    backgroundColor: Colors.border,
+    marginHorizontal: 4,
+  },
+  timePageDotActive: {
+    width: 18,
+    backgroundColor: Colors.primary,
+  },
 });
 
 export default DateBook;

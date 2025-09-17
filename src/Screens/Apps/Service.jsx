@@ -201,7 +201,7 @@ const Service = ({route}) => {
             <Text style={styles.priceText}>
               {singlePrice}{' '}
               <Text style={{fontSize: 12}}>
-                {i18n.language === 'ar' ? 'QAR' : 'ر.ق'}
+                {i18n.language !== 'ar' ? 'QAR' : 'ر.ق'}
               </Text>
             </Text>
           ) : (
@@ -209,7 +209,7 @@ const Service = ({route}) => {
               {minPrice != null &&
                 maxPrice != null &&
                 `${minPrice} - ${maxPrice} ${
-                  i18n.language === 'ar' ? 'QAR' : 'ر.ق'
+                  i18n.language !== 'ar' ? 'QAR' : 'ر.ق'
                 }`}
             </Text>
           )}
@@ -263,7 +263,7 @@ const Service = ({route}) => {
             style={{fontWeight: '600', marginBottom: 8, color: Colors.text}}>
             {item?.price}{' '}
             <Text style={{fontSize: 12, color: Colors.text}}>
-              {i18n.language === 'ar' ? 'QAR' : 'ر.ق'}
+              {i18n.language !== 'ar' ? 'QAR' : 'ر.ق'}
             </Text>
           </Text>
           <TouchableOpacity
@@ -374,19 +374,21 @@ const Service = ({route}) => {
                             await fetchData(item.uuid);
                           }}
                           activeOpacity={0.7}>
-                          <Text
-                            style={[
-                              styles.filterItemText,
-                              {
-                                color:
-                                  selectedLocation === item.uuid
-                                    ? 'white'
-                                    : Colors.black3,
-                                textAlign: isRTL ? 'right' : 'left',
-                              },
-                            ]}>
-                            {isRTL ? item.name_ar : item.name}
-                          </Text>
+                          <View style={{flexDirection: 'row'}}>
+                            <Text
+                              style={[
+                                styles.filterItemText,
+                                {
+                                  color:
+                                    selectedLocation === item.uuid
+                                      ? 'white'
+                                      : Colors.black3,
+                                  textAlign: isRTL ? 'right' : 'left',
+                                },
+                              ]}>
+                              {isRTL ? item.name_ar : item.name}
+                            </Text>
+                          </View>
                         </TouchableOpacity>
                       )}
                       keyExtractor={item => item.uuid}
@@ -537,6 +539,7 @@ const styles = StyleSheet.create({
   filterListContainer: {
     paddingHorizontal: 10,
     paddingVertical: 5,
+    flex: 1,
   },
   filterItem: {
     marginHorizontal: 5,
