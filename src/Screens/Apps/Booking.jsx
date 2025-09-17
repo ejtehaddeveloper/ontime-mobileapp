@@ -523,7 +523,7 @@ const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
       </View>
 
       <View style={styles.cardRight}>
-        <StatusBadge status={item?.status} />
+        {/* <StatusBadge status={item?.status} /> */}
         <View style={{height: 8}} />
         <View style={styles.detailPill}>
           <Text style={styles.detailPillText}>{i18n.t('Detail')}</Text>

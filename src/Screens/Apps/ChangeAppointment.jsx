@@ -57,12 +57,10 @@ const arabicMonths = [
 ];
 
 /**
- * ChangeBook — improved & strict 3x4 time grid
+ * ChangeBook — single-block time grid (no pagination)
  * - Only available slots are used
  * - In-memory caching per (emp|any) + date
- * - Pages of 12 slots (3 cols x 4 rows), horizontally scrollable
- * - Empty placeholders keep consistent layout when a page has <12 items
- * - Pills have consistent width & height computed from screen size
+ * - All time pills rendered in a single wrapping grid
  */
 
 const ChangeBook = ({route}) => {
@@ -97,10 +95,6 @@ const ChangeBook = ({route}) => {
   const [timeSlots, setTimeSlots] = useState([]); // only available slots
   const [loadTime, setLoadTime] = useState(false);
   const [errorT, setErrorT] = useState('');
-
-  // pagination state for pages of times
-  const [currentPage, setCurrentPage] = useState(0);
-  const currentPageRef = useRef(0);
 
   // other UI / modal states
   const [loading, setLoading] = useState(true);
@@ -155,7 +149,7 @@ const ChangeBook = ({route}) => {
   }, [salonId, serviceID, isSubService]);
 
   useEffect(() => {
-    fetchEmployees(); /* eslint-disable-next-line react-hooks/exhaustive-deps */
+    fetchEmployees();
   }, []);
 
   // compute visible days array when month/year changes
@@ -213,23 +207,18 @@ const ChangeBook = ({route}) => {
   // date string YYYY-MM-DD
   const date = `${currentYear}-${currentMonth}-${selectedDay}`;
 
-  // layout math for strict 3x4 grid
+  // layout math for single block grid
+  // reduce pill size by increasing cols to 4 so more pills fit per row
   const gapH = 12; // horizontal gap between pills
   const gapV = 12; // vertical gap between pills
-  const cols = 3,
-    rows = 4,
-    perPage = cols * rows;
+  const cols = 4; // changed to 4 to reduce pill size and show more per row
   const pillWidth = useMemo(
     () => Math.floor((containerWidth - gapH * (cols + 1)) / cols),
     [containerWidth],
   );
   const pillHeight = useMemo(
-    () => Math.max(52, Math.floor(pillWidth * 0.55)),
+    () => Math.max(48, Math.floor(pillWidth * 0.5)),
     [pillWidth],
-  );
-  const pageHeight = useMemo(
-    () => rows * pillHeight + gapV * (rows + 1),
-    [rows, pillHeight, gapV],
   );
 
   // fetch times (uses cache if available) — store ONLY available slots
@@ -298,73 +287,14 @@ const ChangeBook = ({route}) => {
     };
   }, [empSelectedId, date, salonId, serviceID, isSubService, selectedDay]);
 
-  // chunk into pages of perPage and pad with nulls to keep layout consistent
-  const pages = useMemo(() => {
-    const arr = Array.isArray(timeSlots)
+  // sorted slots for rendering (single block)
+  const sortedSlots = useMemo(() => {
+    return Array.isArray(timeSlots)
       ? timeSlots
           .slice()
           .sort((a, b) => a.start_time.localeCompare(b.start_time))
       : [];
-    const p = [];
-    for (let i = 0; i < arr.length; i += perPage) {
-      const chunk = arr.slice(i, i + perPage);
-      // pad
-      while (chunk.length < perPage) {
-        chunk.push(null);
-      }
-      p.push(chunk);
-    }
-    // ensure at least one page so grid always renders
-    if (p.length === 0) {
-      const empty = new Array(perPage).fill(null);
-      p.push(empty);
-    }
-    return p;
   }, [timeSlots]);
-
-  // ensure currentPage is valid when pages change
-  useEffect(() => {
-    if (!pages || pages.length === 0) {
-      setCurrentPage(0);
-      currentPageRef.current = 0;
-      return;
-    }
-    if (currentPage >= pages.length) {
-      setCurrentPage(0);
-      currentPageRef.current = 0;
-    }
-  }, [pages.length, currentPage]);
-
-  // keep ref in sync
-  useEffect(() => {
-    currentPageRef.current = currentPage;
-  }, [currentPage]);
-
-  // onScroll handler — update current page immediately while scrolling
-  const onPagesScroll = useCallback(
-    e => {
-      if (!pages || pages.length === 0) return;
-      const offsetX = e.nativeEvent.contentOffset.x || 0;
-      const idx = Math.round(offsetX / (containerWidth || 1));
-      const pageIndex = Math.max(0, Math.min(idx, pages.length - 1));
-      if (pageIndex !== currentPageRef.current) {
-        setCurrentPage(pageIndex);
-        currentPageRef.current = pageIndex;
-      }
-    },
-    [containerWidth, pages.length],
-  );
-
-  const onPagesMomentumEnd = useCallback(
-    e => {
-      const offsetX = e.nativeEvent.contentOffset.x || 0;
-      const idx = Math.round(offsetX / (containerWidth || 1));
-      const pageIndex = Math.max(0, Math.min(idx, pages.length - 1));
-      setCurrentPage(pageIndex);
-      currentPageRef.current = pageIndex;
-    },
-    [containerWidth, pages.length],
-  );
 
   // employee row
   const renderEmployeeRow = useCallback(
@@ -422,30 +352,15 @@ const ChangeBook = ({route}) => {
     (slot, index) => {
       const isSelected = slot && selectedDate === slot.start_time;
       const tm = slot
-        ? moment(slot.start_time, 'HH:mm')
-            .locale(i18n.language === 'ar' ? 'ar' : 'en')
-            .format('hh:mm a')
+        ? moment(slot.start_time, 'HH:mm').locale('en').format('hh:mm a')
         : '';
       if (!slot) {
-        // placeholder
-        return (
-          <View
-            key={`ph-${index}`}
-            style={[
-              styles.timePillPlaceholder,
-              {
-                width: pillWidth,
-                height: pillHeight,
-                marginHorizontal: gapH / 2,
-                marginVertical: gapV / 2,
-              },
-            ]}
-          />
-        );
+        // in single-block mode we skip placeholders
+        return null;
       }
       return (
         <TouchableOpacity
-          key={String(slot.id ?? Math.random())}
+          key={String(slot.id ?? `${index}-${slot?.start_time}`)}
           activeOpacity={0.85}
           onPress={() => {
             setSelectedDate(slot.start_time);
@@ -622,9 +537,7 @@ const ChangeBook = ({route}) => {
                       styles.dayNumber,
                       {color: isSelected ? '#fff' : '#000'},
                     ]}>
-                    {i18n.language === 'ar'
-                      ? item.day.toString().replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[d])
-                      : item.day}
+                    {item.day}
                   </Text>
                   <Text
                     style={[
@@ -690,7 +603,7 @@ const ChangeBook = ({route}) => {
             <>
               {ListHeaderComponent()}
 
-              {/* pages */}
+              {/* single-block times grid */}
               {errorT ? (
                 <Text
                   style={[
@@ -706,53 +619,23 @@ const ChangeBook = ({route}) => {
                   style={{marginTop: 20}}
                 />
               ) : (
-                <FlatList
-                  data={pages}
-                  horizontal
-                  pagingEnabled
-                  showsHorizontalScrollIndicator={false}
-                  keyExtractor={(p, idx) => `page-${idx}`}
-                  renderItem={({item: page}) => (
-                    <View
-                      style={[
-                        styles.pageContainer,
-                        {width: containerWidth, height: pageHeight},
-                      ]}>
-                      {page.map((slot, idx) => renderTimePill(slot, idx))}
-                    </View>
-                  )}
-                  contentContainerStyle={{
-                    paddingVertical: 8,
-                  }}
-                  extraData={[pages, selectedDate]}
-                  removeClippedSubviews={false}
-                  initialNumToRender={2}
-                  // immediate updates while user swipes:
-                  onScroll={onPagesScroll}
-                  scrollEventThrottle={16}
-                  onMomentumScrollEnd={onPagesMomentumEnd}
-                />
-              )}
-
-              {/* pagination dots (only show when more than 1 page) */}
-              {pages && pages.length > 1 && (
                 <View
                   style={[
-                    styles.timePaginationContainer,
-                    {
-                      flexDirection:
-                        i18n.language === 'ar' ? 'row-reverse' : 'row',
-                    },
+                    styles.pageContainer,
+                    {width: containerWidth, paddingVertical: 8},
                   ]}>
-                  {pages.map((_, i) => (
-                    <View
-                      key={`dot-${i}`}
-                      style={[
-                        styles.timePageDot,
-                        i === currentPage && styles.timePageDotActive,
-                      ]}
-                    />
-                  ))}
+                  {sortedSlots.length === 0 ? (
+                    <Text
+                      style={{
+                        textAlign: 'center',
+                        width: '100%',
+                        marginTop: 8,
+                      }}>
+                      {t('No available times')}
+                    </Text>
+                  ) : (
+                    sortedSlots.map((slot, idx) => renderTimePill(slot, idx))
+                  )}
                 </View>
               )}
 
@@ -770,8 +653,7 @@ const ChangeBook = ({route}) => {
                         setIsVisibleMsg(true);
                         return;
                       }
-                      // go to confirm (in GitHub version this was 'add to cart' flow;
-                      // here we call Confirm because we're only changing appointment)
+                      // go to confirm
                       Confirm();
                     }}
                     disabled={subLoading}>
@@ -782,7 +664,6 @@ const ChangeBook = ({route}) => {
                     )}
                   </TouchableOpacity>
 
-                  {/* keep Add More removed — GitHub change-only doesn't need it */}
                   <View style={{width: '34%'}} />
                 </View>
               </View>
@@ -791,7 +672,7 @@ const ChangeBook = ({route}) => {
           keyExtractor={item => String(item.key)}
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
-          extraData={[pages, days, selectedDay, selectedDate]}
+          extraData={[timeSlots, days, selectedDay, selectedDate]}
         />
       )}
 
@@ -970,7 +851,7 @@ const styles = StyleSheet.create({
   },
   dayNumber: {fontSize: 18, fontWeight: '700'},
   dayName: {fontSize: 12, marginTop: 6},
-  // times: page container and pills
+  // times: container and pills
   pageContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1086,26 +967,6 @@ const styles = StyleSheet.create({
   },
   modalTitle: {fontSize: 16, fontWeight: '600'},
   contentContainer: {paddingBottom: 30},
-
-  // pagination styles for time pages
-  timePaginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 10,
-    gap: 6, // RN 0.71+ supports gap, if older RN remove and rely on marginHorizontal on dot
-  },
-  timePageDot: {
-    width: 10,
-    height: 6,
-    borderRadius: 4,
-    backgroundColor: Colors.border,
-    marginHorizontal: 4,
-  },
-  timePageDotActive: {
-    width: 18,
-    backgroundColor: Colors.primary,
-  },
 });
 
 export default ChangeBook;
