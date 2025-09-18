@@ -13,7 +13,7 @@ import {t} from 'i18next';
 import i18n from '../../assets/locales/i18';
 const SearchBar = ({value, onChange, onOpenFilter, maxWidth}) => (
   <View style={styles.searchFilterContainer}>
-    <View style={[styles.searchBar, {width: maxWidth}]}>
+    <View style={[styles.searchBar]}>
       <Ionicons name="search-outline" size={18} color={Colors.primary} />
       <TextInput
         placeholder={t('Search here')}
@@ -39,8 +39,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     alignItems: 'center',
+    gap: 5,
   },
   searchBar: {
+    flex: 0.9,
     height: 40,
     flexDirection: 'row',
     borderRadius: 8,
@@ -58,6 +60,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   filter: {
+    flex: 0.1,
     width: 44,
     height: 44,
     marginVertical: 10,

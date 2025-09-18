@@ -526,7 +526,7 @@ const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
         {/* <StatusBadge status={item?.status} /> */}
         <View style={{height: 8}} />
         <View style={styles.detailPill}>
-          <Text style={styles.detailPillText}>{i18n.t('Detail')}</Text>
+          <Text style={styles.detailPillText}>{i18n.t('Details')}</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -784,7 +784,7 @@ const styles = StyleSheet.create({
   avatar: {
     width: 64,
     height: 64,
-    borderRadius: 12,
+    borderRadius: 32,
     resizeMode: 'cover',
     alignItems: 'center',
     justifyContent: 'center',

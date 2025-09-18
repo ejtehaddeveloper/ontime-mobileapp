@@ -78,7 +78,6 @@ function safePriceDisplay(priceStr) {
   if (!priceStr) {
     return '-';
   }
-  // If price is like "100.000" or "100000" or includes decimals, try to show the integer part
   const cleaned = String(priceStr).replace(/[^0-9.]/g, '');
   const parts = cleaned.split('.');
   return parts[0]
@@ -146,9 +145,14 @@ const Header = React.memo(({onBack, title, statusLabel, isRTL}) => (
 ));
 
 const InfoRow = React.memo(({label, value, valueStyle}) => (
-  <View style={styles.intoList}>
-    <Text style={styles.stylist}>{label}</Text>
-    <Text style={[styles.stylist, styles.stylelistName, valueStyle]}>
+  <View style={styles.infoRow}>
+    <Text style={styles.infoLabel} numberOfLines={1} ellipsizeMode="tail">
+      {label}
+    </Text>
+    <Text
+      style={[styles.infoValue, valueStyle]}
+      numberOfLines={2}
+      ellipsizeMode="tail">
       {value ?? '-'}
     </Text>
   </View>
@@ -488,16 +492,33 @@ const styles = StyleSheet.create({
   },
   date: {fontSize: 17, fontWeight: '600', color: 'rgba(0, 0, 0, 0.8)'},
   time: {fontSize: 13, fontWeight: '500', color: Colors.black3},
-  intoList: {
+  infoRow: {
     paddingHorizontal: 6,
     marginBottom: 10,
+    minHeight: 28,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'center', // vertical centering
     justifyContent: 'space-between',
-    minHeight: 25,
+    // allow wrapping behavior for children on very small screens
   },
-  stylist: {fontSize: 15, fontWeight: '600', color: Colors.black3},
-  stylelistName: {fontSize: 15, color: Colors.black1},
+  infoLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.black3,
+    // Give the label a portion of the row but allow it to shrink
+    flex: 0.45,
+    flexShrink: 1,
+    minWidth: 0, // <- CRITICAL: lets it shrink on small devices
+  },
+  infoValue: {
+    fontSize: 15,
+    color: Colors.black1,
+    // value takes remaining space and aligns right
+    flex: 0.55,
+    flexShrink: 1,
+    minWidth: 0, // <- CRITICAL
+    textAlign: 'right',
+  },
   mapButton: {
     width: 113,
     height: 27,

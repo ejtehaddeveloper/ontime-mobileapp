@@ -47,7 +47,6 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [userInfo, setUserInfo] = useState(null);
 
-  const isRTL = useMemo(() => i18n.language === 'ar', []);
   const mountedRef = useRef(true);
 
   const {logout2, isAuth} = useContext(AuthContext);
@@ -115,9 +114,14 @@ const Profile = () => {
 
   const applyLanguageChange = useCallback(async newLang => {
     try {
+      console.log(newLang);
       await AsyncStorage.setItem('language', newLang);
-      await i18n.changeLanguage(newLang);
-      await I18nManager.forceRTL(newLang === 'ar');
+      i18n.changeLanguage(newLang);
+      if (newLang === 'ar') {
+        I18nManager.forceRTL(true);
+      } else {
+        I18nManager.forceRTL(false);
+      }
       RNRestart.restart();
     } catch (error) {
       console.log('Error changing language:', error);
