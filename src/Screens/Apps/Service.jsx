@@ -445,7 +445,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#fff',
-    direction: i18n.language === 'ar' ? 'rtl' : 'ltr',
   },
   container: {
     backgroundColor: '#fff',
