@@ -55,12 +55,16 @@ const NotificationRow = memo(({item, onPress}) => {
       />
 
       <View style={{flex: 1, justifyContent: 'center'}}>
-        <Text style={[styles.text, {fontWeight: '300', fontSize: 13}]}>
-          {i18n.language === 'en' ? item?.title : item?.title_ar}
-        </Text>
-        <Text style={styles.details} numberOfLines={1} ellipsizeMode="tail">
-          {i18n.language === 'en' ? item?.body : item?.body_ar}
-        </Text>
+        <View style={{flexDirection: 'row'}}>
+          <Text style={[styles.text, {fontWeight: '300', fontSize: 13}]}>
+            {i18n.language === 'en' ? item?.title : item?.title_ar}
+          </Text>
+        </View>
+        <View style={{flexDirection: 'row'}}>
+          <Text style={styles.details} numberOfLines={1} ellipsizeMode="tail">
+            {i18n.language === 'en' ? item?.body : item?.body_ar}
+          </Text>
+        </View>
       </View>
       <View style={{width: 70, alignItems: 'center', marginTop: 10}}>
         <View

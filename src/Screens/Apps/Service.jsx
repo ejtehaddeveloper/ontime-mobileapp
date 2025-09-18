@@ -368,10 +368,10 @@ const Service = ({route}) => {
                             },
                           ]}
                           onPressIn={async () => {
-                            setSelectedLocation(
-                              item.uuid === selectedLocation ? null : item.uuid,
-                            );
-                            await fetchData(item.uuid);
+                            setSelectedLocation(item.uuid);
+                            if (selectedLocation !== item.uuid) {
+                              await fetchData(item.uuid);
+                            }
                           }}
                           activeOpacity={0.7}>
                           <View style={{flexDirection: 'row'}}>
@@ -539,7 +539,6 @@ const styles = StyleSheet.create({
   filterListContainer: {
     paddingHorizontal: 10,
     paddingVertical: 5,
-    flex: 1,
   },
   filterItem: {
     marginHorizontal: 5,
@@ -761,10 +760,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#fff',
   },
-  // modalHeader: {
-  //   padding: 10,
-  //   marginBottom: 15,
-  // },
   modalContainer: {
     backgroundColor: 'rgba(0,0,0,0.3)',
     position: 'absolute',

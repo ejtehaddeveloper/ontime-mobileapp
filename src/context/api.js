@@ -430,13 +430,11 @@ export const getSubServices = async uuid => {
 };
 
 export const getServices = async (id, uuid) => {
-  console.log(`ID : ${id} , uuid : ${uuid}`);
-  console.log(`${host}users/subcategory/${uuid}/salon/${id}/services`);
+  console.log(`ID : ${id}`);
   try {
     const response = await axios.get(
       `${host}users/subcategory/${uuid}/salon/${id}/services`,
     );
-    // console.log('servicesT', response.data.data);
     return response.data.data;
   } catch (error) {
     console.log('new log: ', error?.response?.data);

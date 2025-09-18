@@ -8,8 +8,8 @@ buildscript {
         kotlinVersion = "1.9.24"
     }
     repositories {
-        // google()
-        // mavenCentral()
+        google()
+        mavenCentral()
     }
     dependencies {
         classpath("com.android.tools.build:gradle")

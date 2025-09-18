@@ -117,7 +117,6 @@ const Profile = () => {
     try {
       await AsyncStorage.setItem('language', newLang);
       await i18n.changeLanguage(newLang);
-
       await I18nManager.forceRTL(newLang === 'ar');
       RNRestart.restart();
     } catch (error) {
