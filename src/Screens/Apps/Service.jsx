@@ -190,7 +190,7 @@ const Service = ({route}) => {
           <View style={styles.serviceMetaRow}>
             <Text style={styles.title2}>
               {isSub
-                ? `${minDuration} - ${maxDuration} ${'Mins'}`
+                ? `${minDuration} - ${maxDuration} ${t('Mins')}`
                 : item?.duration + ' ' + t('Mins')}
             </Text>
           </View>

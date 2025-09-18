@@ -6,7 +6,6 @@ import React, {
   useEffect,
   useRef,
   useState,
-  useMemo,
   memo,
 } from 'react';
 import {
@@ -43,8 +42,6 @@ const DEFAULT_LOGOS = [
 ];
 
 const FavoriteRow = memo(({item, onPressCard, onPressHeart}) => {
-  const isRTL = useMemo(() => i18n.language === 'ar', []);
-
   const slug = item.slug;
   const number = slug?.match(/\d+$/);
   const extractedNumber = number ? number[0] : null;
