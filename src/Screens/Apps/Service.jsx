@@ -539,6 +539,7 @@ const styles = StyleSheet.create({
   filterListContainer: {
     paddingHorizontal: 10,
     paddingVertical: 5,
+    flexGrow: 1,
   },
   filterItem: {
     marginHorizontal: 5,
