@@ -12,7 +12,6 @@ const getToken = async () => {
   if (!token) {
     throw new Error('Token not found');
   }
-  console.log('Retrieved token:', token);
   return token;
 };
 
@@ -26,7 +25,6 @@ const saveToken = async token => {
 //post
 
 export const SignUp = async (name, phone_number) => {
-  console.log('555555555555555555555', phone_number);
   try {
     const response = await axios.post(`${host}auth/register`, {
       name,
@@ -416,12 +414,12 @@ export const getFilterService = async () => {
 };
 
 export const getSubServices = async uuid => {
-  console.log('uuid...........', uuid);
+  console.log('uuid...........');
   try {
     const response = await axios.get(
       `${host}users/service/${uuid}/sub-services`,
     );
-    console.log('servicesT........', response.data.data);
+    console.log('servicesT........');
     return response.data.data;
   } catch (error) {
     console.log('new log: ', error?.response?.data);

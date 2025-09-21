@@ -403,7 +403,7 @@ const BookingDetails = ({route}) => {
               <InfoRow label={t('Employee')} value={salon?.employee?.name} />
 
               <InfoRow
-                label={t('Name')}
+                label={t('Service')}
                 value={
                   i18n.language === 'ar'
                     ? salon?.service?.name_ar ?? salon?.sub_service?.name_ar

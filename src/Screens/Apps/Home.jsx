@@ -422,11 +422,7 @@ const Home = () => {
     salonKeyExtractor,
     numColumns,
   ]);
-  useEffect(() => {
-    if (recent.length > 0) {
-      console.log('Recent appointments:', recent);
-    }
-  }, [recent]);
+
   const MainListComponent = useMemo(
     () => (
       <FlatList
@@ -528,7 +524,6 @@ const Home = () => {
         value={search}
         onChange={setSearch}
         onOpenFilter={() => setFilterVisible(true)}
-        maxWidth={searchBarWidth}
       />
 
       {debouncedSearch && debouncedSearch.length > 0

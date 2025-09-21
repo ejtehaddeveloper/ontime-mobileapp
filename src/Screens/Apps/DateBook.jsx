@@ -1,3 +1,4 @@
+/* eslint-disable react/no-unstable-nested-components */
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react-native/no-inline-styles */
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
@@ -25,7 +26,7 @@ import {
   getTime,
 } from '../../context/api';
 import Loading from '../../assets/common/Loading';
-import {screenHeight, screenWidth} from '../../assets/constants/ScreenSize';
+import {screenWidth} from '../../assets/constants/ScreenSize';
 import {t} from 'i18next';
 import i18n from '../../assets/locales/i18';
 import moment from 'moment';
@@ -33,7 +34,7 @@ import 'moment/locale/ar';
 import {SafeAreaView, useSafeAreaInsets} from 'react-native-safe-area-context';
 
 // Screen dims
-const {width, height} = Dimensions.get('window');
+const {height} = Dimensions.get('window');
 
 const months = [
   'Jan',

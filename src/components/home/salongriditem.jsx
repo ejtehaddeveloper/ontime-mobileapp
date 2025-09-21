@@ -7,7 +7,6 @@ import {Colors} from '../../assets/constants';
 import buildImageUri from '../../helpers/buildimageuri';
 
 const SalonGridItem = ({item, size = 100, onPress, isRTL = false}) => {
-  console.log('Rendering SalonGridItem', item);
   const appLogo = require('../../assets/images/logoem.png');
   //data normalization
   const isSalon = (!item?.images?.logo || !item?.name) && !!item?.salon;

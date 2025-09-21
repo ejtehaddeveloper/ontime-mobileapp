@@ -1,5 +1,12 @@
 /* eslint-disable react-native/no-inline-styles */
-import React, {useContext, useEffect, useState} from 'react';
+import React, {
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  memo,
+} from 'react';
 import {
   FlatList,
   ScrollView,
@@ -23,12 +30,172 @@ import {
   getSubCategory,
   getSubServices,
 } from '../../context/api';
-import Loading from '../../assets/common/Loading';
 import i18n from '../../assets/locales/i18';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {useTranslation} from 'react-i18next';
 import hostImge from '../../context/hostImge';
-import {colors} from 'react-native-keyboard-controller/lib/typescript/components/KeyboardToolbar/colors';
+
+//
+// Module-level caches to avoid duplicate requests across mounts
+//
+const subServicesCache = new Map(); // uuid -> payload { data, min_price, max_price, min_duration, max_duration }
+const subServicesPromises = new Map(); // uuid -> Promise resolving to payload
+const servicesCache = new Map(); // uid -> services array
+
+//
+// ServiceItem: moved OUTSIDE parent component to avoid unstable nested component eslint error
+//
+const ServiceItem = memo(function ServiceItem({
+  item,
+  isRTL,
+  t,
+  DateBook,
+  handleServiceLocal,
+}) {
+  const isSub = !!item?.has_sub_services;
+  const [subInfo, setSubInfo] = useState(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    if (!isSub) {
+      return () => (mountedRef.current = false);
+    }
+
+    const uid = item.uuid;
+
+    // cached
+    if (subServicesCache.has(uid)) {
+      if (mountedRef.current) {
+        setSubInfo(subServicesCache.get(uid));
+      }
+      return () => (mountedRef.current = false);
+    }
+
+    // in-flight
+    if (subServicesPromises.has(uid)) {
+      subServicesPromises
+        .get(uid)
+        .then(res => {
+          if (mountedRef.current) {
+            setSubInfo(res);
+          }
+        })
+        .catch(() => {});
+      return () => (mountedRef.current = false);
+    }
+
+    // start fetch
+    const promise = (async () => {
+      try {
+        const data = await getSubServices(uid);
+        const prices = (data || [])
+          .map(s => {
+            const priceNum = parseFloat(s.price);
+            return Number.isFinite(priceNum) ? priceNum : null;
+          })
+          .filter(pv => pv != null);
+
+        const durations = (data || [])
+          .map(s => {
+            const d = parseInt(s.duration, 10);
+            return Number.isFinite(d) ? d : null;
+          })
+          .filter(dv => dv != null);
+
+        const payload = {
+          data: data || [],
+          min_price: prices.length ? Math.min(...prices) : null,
+          max_price: prices.length ? Math.max(...prices) : null,
+          min_duration: durations.length ? Math.min(...durations) : null,
+          max_duration: durations.length ? Math.max(...durations) : null,
+        };
+
+        subServicesCache.set(uid, payload);
+        return payload;
+      } finally {
+        subServicesPromises.delete(uid);
+      }
+    })();
+
+    subServicesPromises.set(uid, promise);
+
+    promise
+      .then(res => {
+        if (mountedRef.current) {
+          setSubInfo(res);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [item, isSub]);
+
+  const singlePrice = item?.price;
+  const minPrice = subInfo?.min_price ?? null;
+  const maxPrice = subInfo?.max_price ?? null;
+  const minDuration = subInfo?.min_duration ?? null;
+  const maxDuration = subInfo?.max_duration ?? null;
+
+  return (
+    <TouchableOpacity
+      style={styles.serv}
+      onPress={() =>
+        isSub ? handleServiceLocal(item.uuid) : DateBook(item.uuid)
+      }
+      activeOpacity={0.8}>
+      <View style={styles.serviceInfoContainer}>
+        <View style={styles.serviceTitleRow}>
+          <Text
+            style={[styles.text, {textAlign: isRTL ? 'right' : 'left'}]}
+            numberOfLines={1}>
+            {isRTL ? item?.name_ar : item?.name}
+          </Text>
+        </View>
+
+        <View style={styles.serviceMetaRow}>
+          <Text style={styles.title2}>
+            {isSub
+              ? minDuration != null && maxDuration != null
+                ? `${minDuration} - ${maxDuration} ${t('Mins')}`
+                : t('Mins')
+              : `${item?.duration ?? '-'} ${t('Mins')}`}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.serviceActionContainer}>
+        {!isSub ? (
+          <Text style={styles.priceText}>
+            {singlePrice ?? '-'}{' '}
+            <Text style={{fontSize: 12}}>
+              {i18n.language !== 'ar' ? 'QAR' : 'ر.ق'}
+            </Text>
+          </Text>
+        ) : (
+          <Text style={styles.priceText}>
+            {minPrice != null && maxPrice != null
+              ? `${minPrice} - ${maxPrice} ${
+                  i18n.language !== 'ar' ? 'QAR' : 'ر.ق'
+                }`
+              : ''}
+          </Text>
+        )}
+        <TouchableOpacity
+          style={[styles.selectButton, isSub ? styles.detailsButton : null]}
+          onPress={() =>
+            isSub ? handleServiceLocal(item.uuid) : DateBook(item.uuid)
+          }>
+          <Text style={styles.selectButtonText}>
+            {t(isSub ? 'Details' : 'Select')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
+});
 
 const Service = ({route}) => {
   const {t} = useTranslation();
@@ -38,246 +205,201 @@ const Service = ({route}) => {
   const isRTL = i18n.language === 'ar';
 
   const [selectedLocation, setSelectedLocation] = useState(null);
-  const [salonInfo, setSalons] = useState([]);
+  const [salonInfo, setSalons] = useState([]); // services list
   const [subCat, setSubCat] = useState([]);
   const [subService, setSubService] = useState([]);
-  const [SalonInfo, setSalonInfo] = useState([]);
-  const [loading, setloading] = useState(true);
+  const [SalonInfo, setSalonInfo] = useState({});
+  const [loading, setloading] = useState(true); // initial full-page loading
+  const [servicesLoading, setServicesLoading] = useState(false); // inline loading for switching subs
   const [isVisible, setIsVisible] = useState(false);
   const [Error, setError] = useState('');
   const appLogo = require('../../assets/images/logoem.png');
 
-  const handleGoBack = () => navigation.goBack();
+  const fetchingRef = useRef(null);
 
-  const fetchData = async uid => {
-    try {
-      const data = await getServices(salonId, uid);
-      setSalons(data);
-    } catch (error) {
-      console.log('Error fetching data:', error);
-    } finally {
-      setloading(false);
-    }
-  };
+  const handleGoBack = useCallback(() => navigation.goBack(), [navigation]);
+
+  // fetch services (getServices) - wrapped and guarded
+  const fetchData = useCallback(
+    async uid => {
+      if (!uid) {
+        return;
+      }
+      // prevent duplicate fetches for same uid
+      if (fetchingRef.current === uid) {
+        return;
+      }
+      fetchingRef.current = uid;
+
+      // if we have the services cached for this uid, use it and avoid loader
+      if (servicesCache.has(uid)) {
+        setSalons(servicesCache.get(uid) || []);
+        fetchingRef.current = null;
+        setServicesLoading(false);
+        return;
+      }
+
+      setServicesLoading(true);
+      try {
+        const data = await getServices(salonId, uid);
+        setSalons(data || []);
+        servicesCache.set(uid, data || []);
+      } catch (error) {
+        console.log('Error fetching services:', error);
+      } finally {
+        fetchingRef.current = null;
+        setServicesLoading(false);
+      }
+    },
+    [salonId],
+  );
 
   useEffect(() => {
-    const fetchSalonData = async () => {
+    // fetch both salon info and subcategories, then stop initial loading.
+    const init = async () => {
       try {
-        const data = await getSalons(salonId);
-        setSalonInfo(data);
-      } catch (error) {
-        console.log('Error fetching data:', error);
-      }
-    };
+        const salonPromise = (async () => {
+          try {
+            const data = await getSalons(salonId);
+            setSalonInfo(data || {});
+          } catch (e) {
+            console.log('Error fetching salon data:', e);
+          }
+        })();
 
-    const fetchSubCat = async () => {
-      try {
-        const data = await getSubCategory(uuid, salonId);
-        setSubCat(data);
-        if (data && data.length > 0) {
-          setSelectedLocation(data[0].uuid);
-          fetchData(data[0].uuid);
-        } else {
-          setError(t('There is no services right now'));
-        }
-      } catch (error) {
-        console.log('Error fetching data:', error);
+        const subCatPromise = (async () => {
+          try {
+            const data = await getSubCategory(uuid, salonId);
+            setSubCat(data || []);
+            if (data && data.length > 0) {
+              setSelectedLocation(data[0].uuid);
+              // use fetchData to load services for the initial category
+              await fetchData(data[0].uuid);
+            } else {
+              setError(t('There is no services right now'));
+            }
+          } catch (e) {
+            console.log('Error fetching sub categories:', e);
+            setError(t('There is no services right now'));
+          }
+        })();
+
+        await Promise.all([salonPromise, subCatPromise]);
       } finally {
-        setloading(false);
+        setloading(false); // initial load done
       }
     };
 
-    fetchSalonData();
-    fetchSubCat();
+    init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuth, salonId, uuid]);
+  }, [isAuth, salonId, uuid, fetchData]);
 
-  const DateBook = serviceID => {
-    if (!isAuth) {
-      navigation.navigate('Auth');
-      setIsVisible(false);
-    } else {
-      navigation.navigate('DateBook', {salonId, serviceID, isSubService: 0});
-      setIsVisible(false);
-    }
-  };
-
-  const DateBook2 = serviceID => {
-    if (!isAuth) {
-      navigation.navigate('Auth');
-      setIsVisible(false);
-    } else {
-      navigation.navigate('DateBook', {salonId, serviceID, isSubService: 1});
-      setIsVisible(false);
-    }
-  };
-
-  const handleService = async uid => {
-    try {
-      const data = await getSubServices(uid);
-      if (data && Array.isArray(data)) {
-        const prices = data
-          .map(s => {
-            const p = parseFloat(s.price);
-            return Number.isFinite(p) ? p : null;
-          })
-          .filter(p => p != null);
-
-        const min_price = prices.length ? Math.min(...prices) : null;
-        const max_price = prices.length ? Math.max(...prices) : null;
-
-        setSalons(prev =>
-          prev.map(s => (s.uuid === uid ? {...s, min_price, max_price} : s)),
-        );
-
-        setSubService(data);
-        setIsVisible(true);
+  const DateBook = useCallback(
+    serviceID => {
+      if (!isAuth) {
+        navigation.navigate('Auth');
+        setIsVisible(false);
+      } else {
+        navigation.navigate('DateBook', {salonId, serviceID, isSubService: 0});
+        setIsVisible(false);
       }
-    } catch (error) {
-      console.log('Error fetching data:', error);
-    } finally {
-      setloading(false);
+    },
+    [isAuth, navigation, salonId],
+  );
+
+  const DateBook2 = useCallback(
+    serviceID => {
+      if (!isAuth) {
+        navigation.navigate('Auth');
+        setIsVisible(false);
+      } else {
+        navigation.navigate('DateBook', {salonId, serviceID, isSubService: 1});
+        setIsVisible(false);
+      }
+    },
+    [isAuth, navigation, salonId],
+  );
+
+  // Improved handleService that uses cache + in-flight promise map
+  const handleService = useCallback(async uid => {
+    if (!uid) {
+      return;
     }
-  };
+    try {
+      // cached
+      if (subServicesCache.has(uid)) {
+        const cached = subServicesCache.get(uid);
+        setSubService(cached.data || []);
+        setIsVisible(true);
+        return;
+      }
 
-  const renderServiceItem = async ({item}) => {
-    const isSub = !!item?.has_sub_services;
-    let minPrice = null;
-    let maxPrice = null;
-    let minDuration = null;
-    let maxDuration = null;
-    if (isSub) {
-      const uid = item?.uuid;
-      const data = await getSubServices(uid);
-      if (data && Array.isArray(data)) {
-        const prices = data
+      // in-flight
+      if (subServicesPromises.has(uid)) {
+        const res = await subServicesPromises.get(uid);
+        setSubService(res.data || []);
+        setIsVisible(true);
+        return;
+      }
+
+      // create promise
+      const promise = (async () => {
+        const data = await getSubServices(uid);
+        const prices = (data || [])
           .map(s => {
-            const p = parseFloat(s.price);
-            return Number.isFinite(p) ? p : null;
+            const priceNum = parseFloat(s.price);
+            return Number.isFinite(priceNum) ? priceNum : null;
           })
-          .filter(p => p != null);
+          .filter(pv => pv != null);
 
-        minPrice = prices.length ? Math.min(...prices) : null;
-        maxPrice = prices.length ? Math.max(...prices) : null;
-        const durations = data
+        const durations = (data || [])
           .map(s => {
             const d = parseInt(s.duration, 10);
             return Number.isFinite(d) ? d : null;
           })
-          .filter(d => d != null);
+          .filter(dv => dv != null);
 
-        minDuration = durations.length ? Math.min(...durations) : null;
-        maxDuration = durations.length ? Math.max(...durations) : null;
+        const payload = {
+          data: data || [],
+          min_price: prices.length ? Math.min(...prices) : null,
+          max_price: prices.length ? Math.max(...prices) : null,
+          min_duration: durations.length ? Math.min(...durations) : null,
+          max_duration: durations.length ? Math.max(...durations) : null,
+        };
+
+        subServicesCache.set(uid, payload);
+        return payload;
+      })();
+
+      subServicesPromises.set(uid, promise);
+
+      const result = await promise;
+      setSubService(result.data || []);
+      setIsVisible(true);
+    } catch (error) {
+      console.log('handleService error', error);
+    } finally {
+      if (subServicesPromises.has(uid)) {
+        subServicesPromises.delete(uid);
       }
     }
-    const singlePrice = item?.price;
+  }, []);
 
-    return (
-      <TouchableOpacity
-        style={styles.serv}
-        onPress={() =>
-          isSub ? handleService(item.uuid) : DateBook(item.uuid)
-        }>
-        <View style={styles.serviceInfoContainer}>
-          <View style={styles.serviceTitleRow}>
-            <Text
-              style={[styles.text, {textAlign: isRTL ? 'right' : 'left'}]}
-              numberOfLines={1}>
-              {isRTL ? item?.name_ar : item?.name}
-            </Text>
-          </View>
-
-          <View style={styles.serviceMetaRow}>
-            <Text style={styles.title2}>
-              {isSub
-                ? `${minDuration} - ${maxDuration} ${t('Mins')}`
-                : item?.duration + ' ' + t('Mins')}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.serviceActionContainer}>
-          {!isSub ? (
-            <Text style={styles.priceText}>
-              {singlePrice}{' '}
-              <Text style={{fontSize: 12}}>
-                {i18n.language !== 'ar' ? 'QAR' : 'ر.ق'}
-              </Text>
-            </Text>
-          ) : (
-            <Text style={styles.priceText}>
-              {minPrice != null &&
-                maxPrice != null &&
-                `${minPrice} - ${maxPrice} ${
-                  i18n.language !== 'ar' ? 'QAR' : 'ر.ق'
-                }`}
-            </Text>
-          )}
-          <TouchableOpacity
-            style={[styles.selectButton, isSub ? styles.detailsButton : null]}
-            onPress={() =>
-              isSub ? handleService(item.uuid) : DateBook(item.uuid)
-            }>
-            <Text style={styles.selectButtonText}>
-              {t(isSub ? 'Details' : 'Select')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-  const renderServiceItem2 = ({item}) => (
-    <View
-      style={[
-        styles.serv,
-        {
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingVertical: 10,
-          paddingHorizontal: 14,
-        },
-      ]}>
-      <View
-        style={{
-          flex: 1,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-        <View>
-          <Text style={styles.text}>
-            {i18n.language === 'ar' ? item?.name_ar : item?.name}
-          </Text>
-          <Text style={styles.title2}>
-            {item?.duration} {t('Mins')}
-          </Text>
-        </View>
-        <View
-          style={{
-            alignItems: 'flex-end',
-            flexDirection: 'row',
-            justifyContent: 'center',
-            gap: 8,
-          }}>
-          <Text
-            style={{fontWeight: '600', marginBottom: 8, color: Colors.text}}>
-            {item?.price}{' '}
-            <Text style={{fontSize: 12, color: Colors.text}}>
-              {i18n.language !== 'ar' ? 'QAR' : 'ر.ق'}
-            </Text>
-          </Text>
-          <TouchableOpacity
-            style={[
-              styles.selectButton,
-              {paddingHorizontal: 14, borderRadius: 20},
-            ]}
-            onPress={() => DateBook2(item.uuid)}>
-            <Text style={styles.selectButtonText}>{t('Select')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
+  // wrapper to use as renderItem (synchronous)
+  const renderServiceItem = useCallback(
+    ({item}) => (
+      <ServiceItem
+        item={item}
+        isRTL={isRTL}
+        t={t}
+        i18n={i18n}
+        DateBook={DateBook}
+        handleServiceLocal={handleService}
+      />
+    ),
+    [isRTL, t, DateBook, handleService],
   );
+
   const logoSource =
     SalonInfo?.images?.logo &&
     SalonInfo?.images?.logo !==
@@ -285,6 +407,7 @@ const Service = ({route}) => {
     SalonInfo?.images?.logo !== '/storage/0'
       ? {uri: `${hostImge}${SalonInfo.images.logo}`}
       : appLogo;
+
   return (
     <SafeAreaView
       style={[styles.safeArea, {writingDirection: isRTL ? 'rtl' : 'ltr'}]}>
@@ -296,18 +419,16 @@ const Service = ({route}) => {
           onPress={handleGoBack}
         />
       </View>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}>
-        {loading ? (
-          <ActivityIndicator
-            size="large"
-            style={{
-              alignItems: 'center',
-            }}
-            color={Colors.primary}
-          />
-        ) : (
+
+      {loading ? (
+        // full-screen initial loader
+        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.contentContainer}>
           <>
             <View style={[styles.salonInfoContainer]}>
               <Image
@@ -367,10 +488,10 @@ const Service = ({route}) => {
                                   : 'white',
                             },
                           ]}
-                          onPressIn={async () => {
-                            setSelectedLocation(item.uuid);
+                          onPress={() => {
                             if (selectedLocation !== item.uuid) {
-                              await fetchData(item.uuid);
+                              setSelectedLocation(item.uuid);
+                              fetchData(item.uuid);
                             }
                           }}
                           activeOpacity={0.7}>
@@ -398,45 +519,111 @@ const Service = ({route}) => {
                     />
                   </View>
 
-                  <FlatList
-                    nestedScrollEnabled
-                    data={salonInfo}
-                    renderItem={renderServiceItem}
-                    keyExtractor={(item, index) =>
-                      item.id ? item.id.toString() : index.toString()
-                    }
-                    contentContainerStyle={styles.serviceListContainer}
-                  />
+                  {/* inline loading when changing categories */}
+                  {servicesLoading ? (
+                    <View style={{paddingVertical: 30, alignItems: 'center'}}>
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    </View>
+                  ) : (
+                    <FlatList
+                      nestedScrollEnabled
+                      data={salonInfo}
+                      renderItem={renderServiceItem}
+                      keyExtractor={(item, index) =>
+                        item.id ? item.id.toString() : index.toString()
+                      }
+                      contentContainerStyle={styles.serviceListContainer}
+                    />
+                  )}
                 </>
               )}
             </View>
           </>
-        )}
-        <Modal
-          animationType="slide"
-          transparent
-          visible={isVisible}
-          onRequestClose={() => setIsVisible(false)}>
-          <Pressable style={styles.modal} onPress={() => setIsVisible(false)}>
-            <Pressable style={styles.modal2}>
-              <View style={styles.modalHeader}>
-                <Text>{t('Details')}</Text>
-                <Ionicons
-                  name="close-outline"
-                  size={25}
-                  onPress={() => setIsVisible(false)}
+          <Modal
+            animationType="slide"
+            transparent
+            visible={isVisible}
+            onRequestClose={() => setIsVisible(false)}>
+            <Pressable style={styles.modal} onPress={() => setIsVisible(false)}>
+              <Pressable style={styles.modal2}>
+                <View style={styles.modalHeader}>
+                  <Text>{t('Details')}</Text>
+                  <Ionicons
+                    name="close-outline"
+                    size={25}
+                    onPress={() => setIsVisible(false)}
+                  />
+                </View>
+                <FlatList
+                  data={subService}
+                  renderItem={({item}) => (
+                    <View
+                      style={[
+                        styles.serv,
+                        {
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          paddingVertical: 10,
+                          paddingHorizontal: 14,
+                        },
+                      ]}>
+                      <View
+                        style={{
+                          flex: 1,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}>
+                        <View>
+                          <Text style={styles.text}>
+                            {i18n.language === 'ar'
+                              ? item?.name_ar
+                              : item?.name}
+                          </Text>
+                          <Text style={styles.title2}>
+                            {item?.duration} {t('Mins')}
+                          </Text>
+                        </View>
+                        <View
+                          style={{
+                            alignItems: 'flex-end',
+                            flexDirection: 'row',
+                            justifyContent: 'center',
+                            gap: 8,
+                          }}>
+                          <Text
+                            style={{
+                              fontWeight: '600',
+                              marginBottom: 8,
+                              color: Colors.text,
+                            }}>
+                            {item?.price}{' '}
+                            <Text style={{fontSize: 12, color: Colors.text}}>
+                              {i18n.language !== 'ar' ? 'QAR' : 'ر.ق'}
+                            </Text>
+                          </Text>
+                          <TouchableOpacity
+                            style={[
+                              styles.selectButton,
+                              {paddingHorizontal: 14, borderRadius: 20},
+                            ]}
+                            onPress={() => DateBook2(item.uuid)}>
+                            <Text style={styles.selectButtonText}>
+                              {t('Select')}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                  keyExtractor={item => item.id.toString()}
+                  style={{marginBottom: 50}}
                 />
-              </View>
-              <FlatList
-                data={subService}
-                renderItem={renderServiceItem2}
-                keyExtractor={item => item.id.toString()}
-                style={{marginBottom: 50}}
-              />
+              </Pressable>
             </Pressable>
-          </Pressable>
-        </Modal>
-      </ScrollView>
+          </Modal>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 };
@@ -605,17 +792,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#818181',
   },
-  // modalOverlay: {
-  //   flex: 1,
-  //   backgroundColor: 'rgba(0,0,0,0.5)',
-  //   justifyContent: 'flex-end',
-  // },
-  // modalContent: {
-  //   backgroundColor: '#fff',
-  //   borderTopLeftRadius: 30,
-  //   borderTopRightRadius: 30,
-  //   padding: 20,
-  // },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -626,10 +802,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginHorizontal: 15,
   },
-  // modalHeaderTitle: {
-  //   fontSize: 18,
-  //   fontWeight: '600',
-  // },
   modalListContainer: {
     paddingVertical: 10,
   },
