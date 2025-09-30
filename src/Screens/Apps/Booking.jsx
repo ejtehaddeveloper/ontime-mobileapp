@@ -73,7 +73,9 @@ const normalizeAndAttachTs = arr =>
 
 const sortDescByTsThenId = arr =>
   arr.slice().sort((a, b) => {
-    if ((b._ts || 0) !== (a._ts || 0)) return (b._ts || 0) - (a._ts || 0);
+    if ((b._ts || 0) !== (a._ts || 0)) {
+      return (b._ts || 0) - (a._ts || 0);
+    }
     return (Number(b.id) || 0) - (Number(a.id) || 0);
   });
 

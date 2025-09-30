@@ -37,50 +37,50 @@ const LoginOrSignup = () => {
 
   return (
     <SafeAreaView style={{flex: 1, backgroundColor: '#fff'}}>
-    <View style={styles.contaner}>
-      <View
-        style={{
-          alignItems: 'center',
-          marginTop: 15,
-          width: 210,
-          // paddingLeft: 25,
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignSelf: 'flex-start',
-        }}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons
-            name={i18n.language === 'en' ? 'arrow-back' : 'arrow-forward'}
-            size={25}
-            // color={Colors.primary}
-            onPress={handleGoback}
-            hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}
-          />
-        </TouchableOpacity>
-      </View>
-      <ScrollView>
+      <View style={styles.contaner}>
         <View
           style={{
             alignItems: 'center',
-            justifyContent: 'center',
-            marginTop: 50,
+            marginTop: 15,
+            width: 210,
+            // paddingLeft: 25,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignSelf: 'flex-start',
           }}>
-          <Image source={logo} style={styles.image} />
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons
+              name={i18n.language === 'en' ? 'arrow-back' : 'arrow-forward'}
+              size={25}
+              // color={Colors.primary}
+              onPress={handleGoback}
+              hitSlop={{top: 15, bottom: 15, left: 15, right: 15}}
+            />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.cont} onPress={handleLogin}>
-          <Text style={styles.continueText}>{t('Login')}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.cont2} onPress={handleSignup}>
-          <Text style={styles.continueText2}>{t('Sign up')}</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View></SafeAreaView>
+        <ScrollView>
+          <View
+            style={{
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginTop: 50,
+            }}>
+            <Image source={logo} style={styles.image} />
+          </View>
+          <TouchableOpacity style={styles.cont} onPress={handleLogin}>
+            <Text style={styles.continueText}>{t('Login')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.cont2} onPress={handleSignup}>
+            <Text style={styles.continueText2}>{t('Sign up')}</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   contaner: {
-    backgroundColor: '#fff',
     flex: 1,
     alignItems: 'center',
     padding: 20,
