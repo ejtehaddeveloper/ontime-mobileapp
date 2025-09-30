@@ -255,7 +255,6 @@ const ChangeBook = ({route}) => {
           return;
         }
 
-        // keep only available slots (available === true)
         const avail = list.filter(s => s && s.available === true);
         timeCacheRef.current.set(key, avail);
         if (mountedRef.current) {

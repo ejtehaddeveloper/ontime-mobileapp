@@ -1,20 +1,16 @@
-/* eslint-disable react/no-unstable-nested-components */
-/* eslint-disable react-native/no-inline-styles */
-/*
-  Booking Screen — added robust fallback prefetch for page1-replace when pagination missing
-  - merge pages by id keeping freshest (_ts)
-  - when page1 replace occurs, prefetch ALL pages 2..last_page if pagination exists
-    otherwise fall back to sequential prefetch up to MAX_PREFETCH pages (safe cap)
-  - exposes forceFetchAllPages for testing and updateItemInPages/removeItemFromPages for detail screens
+/* Simplified Booking Screen (React Native)
+   - Removed debug noise and unused imports
+   - Kept paging + simple prefetch (safe cap)
+   - Small inline comments for clarity
 */
 
 import React, {
   useCallback,
-  useContext,
   useMemo,
   useRef,
   useState,
   useEffect,
+  useContext,
 } from 'react';
 import {
   View,
@@ -37,10 +33,8 @@ import {getAppoint} from '../../context/api';
 import {Colors} from '../../assets/constants';
 import i18n from '../../assets/locales/i18';
 import {screenHeight} from '../../assets/constants/ScreenSize';
-import {t} from 'i18next';
 
-const DEBUG = false;
-const MAX_PREFETCH = 5;
+const MAX_PREFETCH = 5; // safe cap for fallback prefetch
 const appLogo = require('../../assets/images/logoem.png');
 
 const TABS = [
@@ -54,119 +48,57 @@ const TABS = [
   {id: 3, name: 'Cancelled', name_ar: 'ألغي', status: ['cancelled']},
 ];
 
-function parseToTs(item) {
-  if (!item) {
-    return 0;
-  }
-  const tryParse = s => {
-    if (!s) {
-      return NaN;
-    }
-    const parsed = Date.parse(s);
-    if (!isNaN(parsed)) {
-      return parsed;
-    }
-    return NaN;
-  };
-
+// --- small utility helpers ---
+const parseToTs = item => {
+  if (!item) return 0;
+  // Prefer created_at then date+time, then date, finally fall back to numeric id
   if (item.created_at) {
-    const p = tryParse(item.created_at);
-    if (!isNaN(p)) {
-      return p;
-    }
+    const t = Date.parse(item.created_at);
+    if (!isNaN(t)) return t;
   }
-
   if (item.date && item.start_time) {
-    const combined = `${item.date} ${item.start_time}`;
-    const p = tryParse(combined);
-    if (!isNaN(p)) {
-      return p;
-    }
-    try {
-      const iso = `${item.date}T${item.start_time}`;
-      const parsed = Date.parse(iso);
-      if (!isNaN(parsed)) {
-        return parsed;
-      }
-    } catch (e) {}
+    const t = Date.parse(`${item.date}T${item.start_time}`);
+    if (!isNaN(t)) return t;
   }
-
   if (item.date) {
-    const p = tryParse(item.date);
-    if (!isNaN(p)) {
-      return p;
-    }
+    const t = Date.parse(item.date);
+    if (!isNaN(t)) return t;
   }
-
   const idNum = Number(item.id);
-  if (!isNaN(idNum)) {
-    return idNum;
-  }
+  return isNaN(idNum) ? 0 : idNum;
+};
 
-  return 0;
-}
+const normalizeAndAttachTs = arr =>
+  Array.isArray(arr) ? arr.map(it => ({...it, _ts: parseToTs(it) || 0})) : [];
 
-function normalizeAndAttachTs(arr) {
-  if (!Array.isArray(arr)) {
-    return [];
-  }
-  return arr.map(it => {
-    const copy = {...it};
-    copy._ts = parseToTs(it) || 0;
-    return copy;
+const sortDescByTsThenId = arr =>
+  arr.slice().sort((a, b) => {
+    if ((b._ts || 0) !== (a._ts || 0)) return (b._ts || 0) - (a._ts || 0);
+    return (Number(b.id) || 0) - (Number(a.id) || 0);
   });
-}
 
-function sortDescByTsThenId(arr) {
-  return arr.slice().sort((a, b) => {
-    if ((b._ts || 0) !== (a._ts || 0)) {
-      return (b._ts || 0) - (a._ts || 0);
-    }
-    const idA = Number(a.id) || 0;
-    const idB = Number(b.id) || 0;
-    return idB - idA;
-  });
-}
-
-// Rebuild merged list from pagesRef by picking the freshest version per id, then sort globally
-function rebuildFromPages(pagesRef) {
+// Merge cached pages keeping the freshest entry per id
+const rebuildFromPages = pagesRef => {
   const pages = pagesRef.current || {};
   const map = new Map();
-
-  Object.keys(pages).forEach(pn => {
-    const arr = pages[pn] || [];
-    for (const it of arr) {
+  Object.values(pages).forEach(arr => {
+    (arr || []).forEach(it => {
       const key = String(it.id);
-      const exist = map.get(key);
-      if (!exist || (it._ts || 0) > (exist._ts || 0)) {
-        map.set(key, it);
-      }
-    }
+      const existing = map.get(key);
+      if (!existing || (it._ts || 0) > (existing._ts || 0)) map.set(key, it);
+    });
   });
+  return sortDescByTsThenId(Array.from(map.values()));
+};
 
-  const merged = Array.from(map.values()).sort((a, b) => {
-    const ta = a._ts || 0;
-    const tb = b._ts || 0;
-    if (tb !== ta) {
-      return tb - ta;
-    }
-    const idA = Number(a.id) || 0;
-    const idB = Number(b.id) || 0;
-    return idB - idA;
-  });
-
-  return merged;
-}
-
-function useBookings(initialPage = 1) {
+// --- hook to manage bookings (paging + cache) ---
+function useBookings() {
   const [items, setItems] = useState([]);
   const itemsRef = useRef([]);
   const setItemsState = useCallback(next => {
-    setItems(prev => {
-      const nextVal = typeof next === 'function' ? next(prev) : next;
-      itemsRef.current = Array.isArray(nextVal) ? nextVal : [];
-      return nextVal;
-    });
+    const nextVal = typeof next === 'function' ? next(itemsRef.current) : next;
+    itemsRef.current = Array.isArray(nextVal) ? nextVal : [];
+    setItems(nextVal);
   }, []);
 
   const pagesRef = useRef({});
@@ -177,166 +109,50 @@ function useBookings(initialPage = 1) {
   const [refreshing, setRefreshing] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  // fetch a page (supports API returning {data:[],pagination:{}} or direct array)
-  // suppressPrefetch prevents the caller from triggering prefetch logic again (used in fallback).
+  // fetch a single page and update cache
   const fetchPage = useCallback(
-    async (pageToFetch = 1, replace = false, suppressPrefetch = false) => {
-      if (fetchingPagesRef.current.has(pageToFetch)) {
-        if (DEBUG) {
-          console.log('[BOOKINGS] skip fetch (already fetching)', pageToFetch);
-        }
-        return;
-      }
-      fetchingPagesRef.current.add(pageToFetch);
-      if (pageToFetch === 1 && itemsRef.current.length === 0) {
-        setLoading(true);
-      }
+    async (page = 1, replace = false, suppressPrefetch = false) => {
+      if (fetchingPagesRef.current.has(page)) return; // already fetching
+      fetchingPagesRef.current.add(page);
+      if (page === 1 && itemsRef.current.length === 0) setLoading(true);
 
       try {
-        const resp = await getAppoint(pageToFetch);
-        if (DEBUG) {
-          console.log(
-            '[BOOKINGS] raw resp for page',
-            pageToFetch,
-            resp && typeof resp,
-          );
-        }
+        const resp = await getAppoint(page);
         const arr = Array.isArray(resp) ? resp : resp?.data || [];
         const pagination = resp?.pagination || null;
-        if (pagination && typeof pagination.last_page === 'number') {
+        if (pagination && typeof pagination.last_page === 'number')
           lastPageRef.current = pagination.last_page;
-        }
 
-        const normalized = normalizeAndAttachTs(arr);
-        const pageSorted = sortDescByTsThenId(normalized);
+        const normalized = sortDescByTsThenId(normalizeAndAttachTs(arr));
 
-        if (replace && pageToFetch === 1) {
-          // update only page1; keep other pages intact
-          pagesRef.current = {
-            ...pagesRef.current,
-            [1]: pageSorted,
-          };
-          if (DEBUG) {
-            console.log(
-              '[BOOKINGS] replace page1 stored, count=',
-              pageSorted.length,
-            );
-          }
-        } else {
-          pagesRef.current = {
-            ...pagesRef.current,
-            [pageToFetch]: pageSorted,
-          };
-          if (DEBUG) {
-            console.log(
-              '[BOOKINGS] stored page',
-              pageToFetch,
-              'count=',
-              pageSorted.length,
-            );
-          }
-        }
+        // store page (replace page1 when requested)
+        pagesRef.current = {...pagesRef.current, [page]: normalized};
+        if (replace && page === 1) pagesRef.current[1] = normalized;
 
-        // rebuild merged list and expose it
-        const merged = rebuildFromPages(pagesRef);
-        setItemsState(merged);
+        // rebuild merged list and update state
+        setItemsState(rebuildFromPages(pagesRef));
 
-        // hasMore: if pagination present, check current_page < last_page
-        if (pagination) {
+        // update hasMore
+        if (pagination)
           setHasMore(pagination.current_page < pagination.last_page);
-        } else {
-          setHasMore(arr.length > 0);
-        }
+        else setHasMore(arr.length > 0);
 
-        if (DEBUG) {
-          console.log('[BOOKINGS] merged count=', merged.length);
-          console.log(
-            '[BOOKINGS] merged ids:',
-            merged.map(it => `${it.id}:${it.status}:${it._ts}`).slice(0, 40),
-          );
-          console.log(
-            '[BOOKINGS] pages cached:',
-            Object.keys(pagesRef.current).sort((a, b) => a - b),
-          );
-        }
-
-        // PREFETCH: when page1 replace occurs, try to prefetch remaining pages:
-        // 1) if pagination present -> prefetch 2..last_page
-        // 2) else -> fallback sequential prefetch 2..(1+MAX_PREFETCH) until empty page encountered
-        if (!suppressPrefetch && replace && pageToFetch === 1) {
-          if (pagination && pagination.last_page > 1) {
-            const last = pagination.last_page;
-            for (let next = 2; next <= last; next++) {
-              if (
-                !pagesRef.current[next] &&
-                !fetchingPagesRef.current.has(next)
-              ) {
-                // fire-and-forget, but suppress nested prefetches
-                fetchPage(next, false, true).catch(err => {
-                  if (DEBUG) {
-                    console.log('[BOOKINGS] prefetch error page', next, err);
-                  }
-                });
-              }
+        // Simple prefetch: when we refreshed page1, try to prefetch subsequent pages (bounded)
+        if (!suppressPrefetch && replace && page === 1) {
+          const last = pagination?.last_page || 1;
+          const prefetchEnd = pagination
+            ? Math.min(last, 1 + MAX_PREFETCH)
+            : 1 + MAX_PREFETCH;
+          for (let p = 2; p <= prefetchEnd; p++) {
+            if (!pagesRef.current[p] && !fetchingPagesRef.current.has(p)) {
+              fetchPage(p, false, true).catch(() => {}); // fire-and-forget
             }
-          } else {
-            // fallback: sequentially fetch next pages until an empty array or MAX_PREFETCH reached
-            (async () => {
-              for (let next = 2; next <= 1 + MAX_PREFETCH; next++) {
-                if (
-                  pagesRef.current[next] ||
-                  fetchingPagesRef.current.has(next)
-                ) {
-                  continue;
-                }
-                try {
-                  const resp2 = await getAppoint(next);
-                  const arr2 = Array.isArray(resp2) ? resp2 : resp2?.data || [];
-                  if (!Array.isArray(arr2) || arr2.length === 0) {
-                    if (DEBUG) {
-                      console.log(
-                        '[BOOKINGS] fallback prefetch stopped (empty) at page',
-                        next,
-                      );
-                    }
-                    break;
-                  }
-                  const normalized2 = normalizeAndAttachTs(arr2);
-                  pagesRef.current = {
-                    ...pagesRef.current,
-                    [next]: sortDescByTsThenId(normalized2),
-                  };
-                  if (DEBUG) {
-                    console.log(
-                      '[BOOKINGS] fallback prefetch stored page',
-                      next,
-                      'count=',
-                      arr2.length,
-                    );
-                  }
-                  // rebuild merged each iteration so UI updates progressively
-                  const merged2 = rebuildFromPages(pagesRef);
-                  setItemsState(merged2);
-                } catch (e) {
-                  if (DEBUG) {
-                    console.log(
-                      '[BOOKINGS] fallback prefetch error page',
-                      next,
-                      e,
-                    );
-                  }
-                  break; // stop on error
-                } finally {
-                  // ensure we remove fetching flag if getAppoint used in fetchPage set it; but here we used direct getAppoint
-                }
-              }
-            })();
           }
         }
-      } catch (err) {
-        console.log('useBookings fetch error', err);
+      } catch (e) {
+        console.warn('useBookings fetch error', e);
       } finally {
-        fetchingPagesRef.current.delete(pageToFetch);
+        fetchingPagesRef.current.delete(page);
         setLoading(false);
         setRefreshing(false);
       }
@@ -344,62 +160,54 @@ function useBookings(initialPage = 1) {
     [setItemsState],
   );
 
-  // Update a single item across cached pages (or insert into page1 if not found)
+  // update an item across cached pages (or insert into page1)
   const updateItemInPages = useCallback(
     updated => {
-      if (!updated || updated.id === undefined || updated.id === null) {
-        return;
-      }
+      if (!updated || updated.id == null) return;
       const norm = normalizeAndAttachTs([updated])[0];
       const pages = {...pagesRef.current};
       let changed = false;
+
       Object.keys(pages).forEach(pn => {
         const arr = pages[pn] || [];
-        const idx = arr.findIndex(it => String(it.id) === String(norm.id));
-        if (idx !== -1) {
-          arr[idx] = {...arr[idx], ...norm};
+        const i = arr.findIndex(it => String(it.id) === String(norm.id));
+        if (i !== -1) {
+          arr[i] = {...arr[i], ...norm};
           pages[pn] = sortDescByTsThenId(arr);
           changed = true;
         }
       });
+
       if (!changed) {
         pages[1] = pages[1] ? sortDescByTsThenId([norm, ...pages[1]]) : [norm];
         changed = true;
       }
+
       if (changed) {
         pagesRef.current = pages;
-        const merged = rebuildFromPages(pagesRef);
-        setItemsState(merged);
-        if (DEBUG) {
-          console.log('[BOOKINGS] updateItemInPages applied id=', norm.id);
-        }
+        setItemsState(rebuildFromPages(pagesRef));
       }
     },
     [setItemsState],
   );
 
+  // remove item from all cached pages
   const removeItemFromPages = useCallback(
     id => {
-      if (id === undefined || id === null) {
-        return;
-      }
+      if (id == null) return;
       const pages = {...pagesRef.current};
       let changed = false;
       Object.keys(pages).forEach(pn => {
         const arr = pages[pn] || [];
-        const newArr = arr.filter(it => String(it.id) !== String(id));
-        if (newArr.length !== arr.length) {
-          pages[pn] = newArr;
+        const filtered = arr.filter(it => String(it.id) !== String(id));
+        if (filtered.length !== arr.length) {
+          pages[pn] = filtered;
           changed = true;
         }
       });
       if (changed) {
         pagesRef.current = pages;
-        const merged = rebuildFromPages(pagesRef);
-        setItemsState(merged);
-        if (DEBUG) {
-          console.log('[BOOKINGS] removeItemFromPages removed id=', id);
-        }
+        setItemsState(rebuildFromPages(pagesRef));
       }
     },
     [setItemsState],
@@ -415,29 +223,9 @@ function useBookings(initialPage = 1) {
       .map(n => Number(n))
       .filter(n => !isNaN(n));
     const nextPage = keys.length ? Math.max(...keys) + 1 : 2;
-    if (fetchingPagesRef.current.has(nextPage)) {
-      return;
-    }
-    if (!hasMore) {
-      return;
-    }
+    if (fetchingPagesRef.current.has(nextPage) || !hasMore) return;
     fetchPage(nextPage, false);
   }, [fetchPage, hasMore]);
-
-  // Developer helper: force fetch all known last_page (if available)
-  const forceFetchAllPages = useCallback(async () => {
-    const last = lastPageRef.current || 1;
-    for (let p = 1; p <= last; p++) {
-      if (!fetchingPagesRef.current.has(p) && !pagesRef.current[p]) {
-        // fire-and-forget; use suppressed prefetch to prevent recursion
-        fetchPage(p, false, true).catch(e => {
-          if (DEBUG) {
-            console.log('forceFetchAllPages error for', p, e);
-          }
-        });
-      }
-    }
-  }, [fetchPage]);
 
   return {
     items,
@@ -450,11 +238,10 @@ function useBookings(initialPage = 1) {
     pagesRef,
     updateItemInPages,
     removeItemFromPages,
-    forceFetchAllPages,
   };
 }
 
-// Small components (unchanged)
+// --- UI components ---
 const TabBar = React.memo(({selectedId, onSelect}) => (
   <View style={styles.tabWrap}>
     {TABS.map(tab => {
@@ -474,57 +261,30 @@ const TabBar = React.memo(({selectedId, onSelect}) => (
   </View>
 ));
 
-const StatusBadge = ({status}) => {
-  const map = {
-    pending: {label: 'Pending', color: '#F6C84C'},
-    rescheduled: {label: 'Rescheduled', color: '#4C9BF6'},
-    completed: {label: 'Completed', color: '#4CAF50'},
-    cancelled: {label: 'Cancelled', color: '#E04F5F'},
-    confirmed: {label: 'Confirmed', color: Colors.primary},
-  };
-  const s = map[status] || {label: status || '', color: Colors.primary};
-  return (
-    <View style={[styles.badge, {backgroundColor: s.color}]}>
-      <Text style={styles.badgeText}>{t(s.label)}</Text>
-    </View>
-  );
-};
-
 const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
   const logoUrl = item?.salon?.images?.logo;
-  const hasLogo =
-    !!logoUrl &&
-    logoUrl !==
-      'https://dashboard.ontimeqa.com/backend/assets/images/1300x300.png';
-  const logoUri = hasLogo ? {uri: logoUrl, cache: 'force-cache'} : appLogo;
-  console.log(item);
+  const hasLogo = !!logoUrl && !logoUrl.includes('1300x300.png');
+  const logoSource = hasLogo ? {uri: logoUrl} : appLogo;
+
   return (
     <TouchableOpacity
       style={styles.card}
       onPress={() => onPress(item.id)}
       activeOpacity={0.85}>
       <View style={styles.cardLeft}>
-        <Image source={logoUri} style={styles.avatar} />
+        <Image source={logoSource} style={styles.avatar} />
       </View>
-
       <View style={styles.cardMiddle}>
-        <View style={{flexDirection: 'row'}}>
-          <Text style={[styles.cardTitle]} numberOfLines={1}>
-            {i18n.language === 'ar' ? item?.salon?.name_ar : item?.salon?.name}
-          </Text>
-        </View>
+        <Text style={styles.cardTitle} numberOfLines={1}>
+          {i18n.language === 'ar' ? item?.salon?.name_ar : item?.salon?.name}
+        </Text>
         <View style={styles.rowSmall}>
-          <Text style={styles.muted}>
-            {formatTime(item?.start_time, i18n.language)}
-          </Text>
+          <Text style={styles.muted}>{formatTime(item?.start_time)}</Text>
           <Text style={styles.muted}> • </Text>
           <Text style={styles.muted}>{formatDate(item?.date)}</Text>
         </View>
       </View>
-
       <View style={styles.cardRight}>
-        {/* <StatusBadge status={item?.status} /> */}
-        <View style={{height: 8}} />
         <View style={styles.detailPill}>
           <Text style={styles.detailPillText}>{i18n.t('Details')}</Text>
         </View>
@@ -533,52 +293,36 @@ const BookingCard = React.memo(({item, onPress, formatTime, formatDate}) => {
   );
 });
 
-function formatTimeTo12Hour(time24, lang = 'en') {
-  if (!time24) {
-    return '';
-  }
+// Simple formatters
+const formatTimeTo12Hour = time => {
+  if (!time) return '';
+  const [hh, mm] = String(time).split(':');
+  let h = parseInt(hh, 10);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${mm} ${ampm}`;
+};
 
-  const [hrs, mins] = String(time24).split(':');
-  let hour = parseInt(hrs, 10);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  hour = hour % 12;
-  if (hour === 0) {
-    hour = 12;
-  }
-  return `${hour}:${mins} ${ampm}`;
-}
-
-function formatDateShort(dateString) {
-  if (!dateString) {
-    return '';
-  }
-
-  const date = new Date(dateString);
-  const options = {weekday: 'long', day: 'numeric', month: 'short'};
-
+const formatDateShort = dateString => {
+  if (!dateString) return '';
   try {
-    if (i18n.language === 'ar') {
-      const formatter = new Intl.DateTimeFormat('ar-EG', options);
-      const formatted = formatter.format(date);
-
-      // convert Arabic digits back to English
-      const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-      const toEnglishDigits = s =>
-        s.replace(/[٠-٩]/g, d => arabicDigits.indexOf(d));
-
-      return toEnglishDigits(formatted);
-    } else {
-      return new Intl.DateTimeFormat('en-US', options).format(date);
-    }
+    const date = new Date(dateString);
+    const opts = {weekday: 'long', day: 'numeric', month: 'short'};
+    return new Intl.DateTimeFormat(
+      i18n.language === 'ar' ? 'ar-EG' : 'en-US',
+      opts,
+    ).format(date);
   } catch (e) {
-    return date.toDateString();
+    return dateString;
   }
-}
+};
 
+// --- Main screen ---
 const Booking = () => {
   const navigation = useNavigation();
   const {isAuth} = useContext(AuthContext);
   const [tabSelected, setTabSelected] = useState(1);
+
   const {
     items,
     loading,
@@ -587,15 +331,14 @@ const Booking = () => {
     refresh,
     loadMore,
     hasMore,
-    pagesRef,
     updateItemInPages,
     removeItemFromPages,
-    forceFetchAllPages,
-  } = useBookings(1);
+  } = useBookings();
 
   const flatListRef = useRef(null);
   const onEndReachedCalledDuringMomentum = useRef(false);
 
+  // redirect to Auth if not authenticated
   useFocusEffect(
     useCallback(() => {
       if (!isAuth) {
@@ -604,22 +347,14 @@ const Booking = () => {
         );
         return;
       }
-      // initial load: fetch page1 (replace) -> this triggers prefetch fallback if needed
       fetchPage(1, true);
     }, [isAuth, navigation, fetchPage]),
   );
 
-  useEffect(() => {
-    if (DEBUG) {
-      console.log('[BOOKING] items changed count=', items.length);
-    }
-  }, [items]);
-
   const filterTab = useMemo(
-    () => TABS.find(tp => tp.id === tabSelected),
+    () => TABS.find(t => t.id === tabSelected),
     [tabSelected],
   );
-
   const filteredBookings = useMemo(
     () =>
       Array.isArray(items)
@@ -639,42 +374,23 @@ const Booking = () => {
   );
 
   const handleEndReached = useCallback(() => {
-    if (!loading && hasMore) {
-      loadMore();
-    }
+    if (!loading && hasMore) loadMore();
   }, [loading, hasMore, loadMore]);
 
   const handleTabSelect = useCallback(
     id => {
       setTabSelected(id);
-      try {
-        flatListRef.current?.scrollToOffset({offset: 0, animated: true});
-      } catch (e) {}
+      flatListRef.current?.scrollToOffset({offset: 0, animated: true});
       fetchPage(1, true);
     },
     [fetchPage],
   );
 
-  // Debug developer helper: if DEBUG true, auto-force-fetch all pages 3 seconds after mount
-  useEffect(() => {
-    if (DEBUG) {
-      const t = setTimeout(() => {
-        if (DEBUG) {
-          console.log('[BOOKING] DEBUG: forceFetchAllPages triggered');
-        }
-        forceFetchAllPages();
-      }, 3000);
-      return () => clearTimeout(t);
-    }
-    return undefined;
-  }, [forceFetchAllPages]);
-
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>{t('Bookings')}</Text>
+        <Text style={styles.title}>{i18n.t('Bookings')}</Text>
       </View>
-
       <View style={styles.content}>
         <TabBar selectedId={tabSelected} onSelect={handleTabSelect} />
 
@@ -697,11 +413,10 @@ const Booking = () => {
             )}
             contentContainerStyle={styles.listContent}
             onEndReached={() => {
-              if (!onEndReachedCalledDuringMomentum.current) {
-                return;
+              if (onEndReachedCalledDuringMomentum.current) {
+                handleEndReached();
+                onEndReachedCalledDuringMomentum.current = false;
               }
-              handleEndReached();
-              onEndReachedCalledDuringMomentum.current = false;
             }}
             onEndReachedThreshold={0.4}
             onMomentumScrollBegin={() => {
@@ -781,26 +496,12 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   cardLeft: {marginRight: 12},
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    resizeMode: 'cover',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconWrap: {
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  avatar: {width: 64, height: 64, borderRadius: 32, resizeMode: 'cover'},
   cardMiddle: {flex: 1, justifyContent: 'center'},
   cardTitle: {fontSize: 15, fontWeight: '600', color: Colors.black1},
   rowSmall: {flexDirection: 'row', alignItems: 'center', marginTop: 6},
   muted: {fontSize: 13, color: '#8a8a8a'},
   cardRight: {alignItems: 'flex-end', justifyContent: 'center'},
-  badge: {paddingVertical: 4, paddingHorizontal: 8, borderRadius: 999},
-  badgeText: {fontSize: 11, color: '#fff', fontWeight: '600'},
   detailPill: {
     marginTop: 6,
     borderWidth: 1,

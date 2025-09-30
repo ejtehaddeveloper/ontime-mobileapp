@@ -380,7 +380,6 @@ const DateBook = ({route}) => {
         ? moment(slot.start_time, 'HH:mm').locale('en').format('hh:mm a')
         : '';
       if (!slot) {
-        // for single-block mode we skip placeholders
         return null;
       }
       return (
