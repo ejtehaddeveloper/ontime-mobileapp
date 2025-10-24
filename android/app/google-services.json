@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:870204486473:android:998a4bfb0d24946404e098",
+        "mobilesdk_app_id": "1:870204486473:android:4f772d6056b5bcef04e098",
         "android_client_info": {
-          "package_name": "com.Salons"
+          "package_name": "com.ontimelive"
         }
       },
       "oauth_client": [],

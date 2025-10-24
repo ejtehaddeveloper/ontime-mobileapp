@@ -1,4 +1,4 @@
-package com.salons
+package com.ontimelive
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
